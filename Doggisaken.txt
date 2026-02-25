@@ -576,7 +576,7 @@ end)
 ----------------------------------------------------
 -- ✅ AUTO SLASH (NO NOTIFICATION)
 ----------------------------------------------------
-Combat:CreateSection("auto slash")
+Combat:CreateSection("Auto Slash")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -659,7 +659,7 @@ end)
 -- ✅ UI
 ----------------------------------------------------
 Combat:CreateToggle({
-    Name = "auto slash",
+    Name = "Auto Slash",
     CurrentValue = false,
     Callback = function(v)
         autoSlash = v
@@ -667,7 +667,7 @@ Combat:CreateToggle({
 })
 
 Combat:CreateToggle({
-    Name = "auto aim",
+    Name = "Auto Aim",
     CurrentValue = false,
     Callback = function(v)
         autoAim = v
@@ -675,11 +675,163 @@ Combat:CreateToggle({
 })
 
 Combat:CreateInput({
-    Name = "rage",
+    Name = "Rage",
     PlaceholderText = "12",
     RemoveTextAfterFocusLost = false,
     Callback = function(t)
         local n = tonumber(t)
         if n then rage = n end
+    end
+})
+
+----------------------------------------------------
+-- ✅ CHANCE AIM (LOGIC NGUYÊN BẢN)
+----------------------------------------------------
+Combat:CreateSection("Chance Aim")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local LP = Players.LocalPlayer
+
+--------------------------------------------------
+local aimActive = false
+local aimPredictionValue = 2
+local aimDuration = 1.6
+local aimTargets = {"Slasher", "c00lkidd", "JohnDoe", "1x1x1x1", "Noli", "Guest 666", "Sixer", "Nosferatu"}
+local aimMovementThreshold = 0.5
+local playerHumanoid, playerHRP = nil, nil
+local lastTriggerTime = 0
+local aiming = false
+local originalWS, originalAutoRotate = nil, nil
+local prevFlintVisibleAim = false
+
+--------------------------------------------------
+local function configureCharacter(char)
+    playerHumanoid = char:FindFirstChild("Humanoid")
+    playerHRP = char:FindFirstChild("HumanoidRootPart")
+end
+
+if LP.Character then
+    configureCharacter(LP.Character)
+end
+LP.CharacterAdded:Connect(configureCharacter)
+
+--------------------------------------------------
+local function findValidTarget()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local char = plr.Character
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, targetName in ipairs(aimTargets) do
+                    if char.Name:lower():find(targetName:lower()) then
+                        return hrp
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+--------------------------------------------------
+local function predictPosition(targetHRP, studs)
+    if not targetHRP then return nil end
+    if targetHRP.Velocity.Magnitude > aimMovementThreshold then
+        return targetHRP.Position + (targetHRP.CFrame.LookVector * studs)
+    end
+    return targetHRP.Position
+end
+
+--------------------------------------------------
+local function isFlintlockVisible()
+    if not LP.Character then return false end
+    local flint = LP.Character:FindFirstChild("Flintlock", true)
+    if not flint then return false end
+    if not (flint:IsA("BasePart") or flint:IsA("MeshPart") or flint:IsA("UnionOperation")) then
+        flint = flint:FindFirstChildWhichIsA("BasePart", true)
+        if not flint then return false end
+    end
+    return flint.Transparency < 1
+end
+
+--------------------------------------------------
+RunService.RenderStepped:Connect(function()
+    if not aimActive or not playerHumanoid or not playerHRP then
+        if aiming then
+            aiming = false
+            if originalWS and originalAutoRotate ~= nil then
+                playerHumanoid.WalkSpeed = originalWS
+                playerHumanoid.AutoRotate = originalAutoRotate
+                originalWS, originalAutoRotate = nil, nil
+            end
+        end
+        return
+    end
+
+    local isVisible = isFlintlockVisible()
+
+    if not aiming and isVisible and not prevFlintVisibleAim then
+        lastTriggerTime = tick()
+        aiming = true
+        originalWS = playerHumanoid.WalkSpeed
+        originalAutoRotate = playerHumanoid.AutoRotate
+    end
+    prevFlintVisibleAim = isVisible
+
+    if aiming then
+        local elapsed = tick() - lastTriggerTime
+        local targetHRP = findValidTarget()
+
+        if not targetHRP
+        or (targetHRP.Position - playerHRP.Position).Magnitude < 6
+        or elapsed > aimDuration
+        or not isVisible then
+
+            aiming = false
+            if originalWS and originalAutoRotate ~= nil then
+                playerHumanoid.WalkSpeed = originalWS
+                playerHumanoid.AutoRotate = originalAutoRotate
+                originalWS, originalAutoRotate = nil, nil
+            end
+            return
+        end
+
+        playerHumanoid.AutoRotate = false
+        playerHRP.AssemblyAngularVelocity = Vector3.zero
+
+        local predicted = predictPosition(targetHRP, aimPredictionValue)
+        if predicted then
+            local dir = (predicted - playerHRP.Position).Unit
+            local yaw = math.atan2(-dir.X, -dir.Z)
+            playerHRP.CFrame =
+                CFrame.new(playerHRP.Position) *
+                CFrame.Angles(0, yaw, 0)
+        end
+    end
+end)
+
+----------------------------------------------------
+-- ✅ RAYFIELD UI (KHÔNG ẢNH HƯỞNG LOGIC)
+----------------------------------------------------
+Combat:CreateToggle({
+    Name = "Auto Aim",
+    CurrentValue = false,
+    Callback = function(v)
+        aimActive = v
+    end
+})
+
+Combat:CreateInput({
+    Name = "Aim Prediction",
+    PlaceholderText = "2",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(t)
+        local n = tonumber(t)
+        if n then
+            aimPredictionValue = n
+        end
     end
 })
