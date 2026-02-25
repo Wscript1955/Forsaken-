@@ -576,7 +576,7 @@ end)
 ----------------------------------------------------
 -- ✅ AUTO SLASH (NO NOTIFICATION)
 ----------------------------------------------------
-Combat:CreateSection("Auto Slash")
+Combat:CreateSection("auto slash")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -659,7 +659,7 @@ end)
 -- ✅ UI
 ----------------------------------------------------
 Combat:CreateToggle({
-    Name = "Auto Slash",
+    Name = "auto slash",
     CurrentValue = false,
     Callback = function(v)
         autoSlash = v
@@ -667,7 +667,7 @@ Combat:CreateToggle({
 })
 
 Combat:CreateToggle({
-    Name = "Auto Aim",
+    Name = "auto aim",
     CurrentValue = false,
     Callback = function(v)
         autoAim = v
@@ -675,7 +675,7 @@ Combat:CreateToggle({
 })
 
 Combat:CreateInput({
-    Name = "Rage Distance",
+    Name = "rage",
     PlaceholderText = "12",
     RemoveTextAfterFocusLost = false,
     Callback = function(t)
