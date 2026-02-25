@@ -976,3 +976,262 @@ Combat:CreateDropdown({
         aimMode = mode
     end
 })
+
+----------------------------------------------------
+-- ✅ AUTO M1 (COMBAT TAB VERSION)
+----------------------------------------------------
+Combat:CreateSection("Auto M1")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local LP = Players.LocalPlayer
+local RemoteEvent = ReplicatedStorage
+    :WaitForChild("Modules")
+    :WaitForChild("Network")
+    :WaitForChild("RemoteEvent")
+
+local SurvivorsFolder = Workspace
+    :WaitForChild("Players")
+    :WaitForChild("Survivors")
+
+----------------------------------------------------
+-- VARIABLES (GIỮ NGUYÊN)
+----------------------------------------------------
+local M1Buffers = {
+    ["c00lkidd"]  = buffer.fromstring("\3\5\0\0\0Punch"),
+    ["Noli"]      = buffer.fromstring("\3\4\0\0\0Stab"),
+    ["Sixer"]     = buffer.fromstring("\3\13\0\0\0Carving Slash"),
+    ["Guest 666"] = buffer.fromstring("\3\13\0\0\0Carving Slash"),
+    ["Slasher"]   = buffer.fromstring("\3\5\0\0\0Slash"),
+    ["JohnDoe"]   = buffer.fromstring("\3\5\0\0\0Slash"),
+    ["1x1x1x1"]   = buffer.fromstring("\3\5\0\0\0Slash"),
+    ["Nosferatu"] = buffer.fromstring("\3\5\0\0\0Slash"),
+}
+
+local CurrentBuffer = buffer.fromstring("\3\5\0\0\0Slash")
+
+local SkillSet = {
+    ["VoidRush"] = true, ["Nova"] = true, ["CorruptEnergy"] = true,
+    ["Behead"] = true, ["GashingWound"] = true, ["MassInfection"] = true,
+    ["CorruptNature"] = true, ["WalkspeedOverride"] = true,
+    ["PizzaDelivery"] = true, ["UnstableEye"] = true,
+    ["Entanglement"] = true, ["DigitalFootprint"] = true,
+    ["404Error"] = true, ["RagingPace"] = true,
+    ["DemonicPursuit"] = true, ["InfernalCry"] = true, ["BloodRush"] = true,
+}
+
+----------------------------------------------------
+-- FACING CHECK
+----------------------------------------------------
+getgenv().FacingCheckEnabled = true
+local FACING_DOT = 0.0
+
+local function isFacing(killerRoot, targetRoot)
+    if not killerRoot or not targetRoot then return false end
+    local toTarget = (targetRoot.Position - killerRoot.Position).Unit
+    local forward  = killerRoot.CFrame.LookVector
+    return toTarget:Dot(forward) > FACING_DOT
+end
+
+----------------------------------------------------
+-- HELPERS
+----------------------------------------------------
+local function isKiller()
+    local char = LP.Character
+    if not char or not char.Parent then return false end
+    return char.Parent ~= SurvivorsFolder
+end
+
+local function updateBuffer()
+    local char = LP.Character
+    if char and isKiller() then
+        CurrentBuffer = M1Buffers[char.Name]
+            or buffer.fromstring("\3\5\0\0\0Slash")
+    end
+end
+
+LP.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    updateBuffer()
+end)
+
+getgenv().AutoM1 = false
+getgenv().AimEnabled = true
+getgenv().AimDistance = 15
+
+----------------------------------------------------
+-- ✅ FULL AntiM1Animations (BẠN YÊU CẦU)
+----------------------------------------------------
+local AntiM1Animations = {
+    ["rbxassetid://100926346851492"] = true,
+    ["rbxassetid://140671644163156"] = true,
+    ["rbxassetid://72182155407310"]  = true,
+    ["rbxassetid://72722244508749"]  = true,
+    ["rbxassetid://95802026624883"]  = true,
+    ["rbxassetid://88557287105521"]  = true,
+    ["rbxassetid://82605295530067"]  = true,
+    ["rbxassetid://96959123077498"]  = true,
+    ["rbxassetid://120748030255574"] = true,
+    ["rbxassetid://88287038085804"]  = true,
+    ["rbxassetid://115706752305794"] = true,
+    ["rbxassetid://82036084568393"]  = true,
+}
+
+----------------------------------------------------
+-- TARGET CHECK
+----------------------------------------------------
+local function getNearestSur()
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local best, dist = nil, math.huge
+
+    for _, m in ipairs(SurvivorsFolder:GetChildren()) do
+        local r = m:FindFirstChild("HumanoidRootPart")
+        local h = m:FindFirstChildWhichIsA("Humanoid")
+
+        if r and h and h.Health > 0 then
+            local d = (r.Position - root.Position).Magnitude
+            if d < dist and d <= getgenv().AimDistance then
+                dist = d
+                best = m
+            end
+        end
+    end
+
+    return best
+end
+
+local function targetUsingRageAnim(target)
+    local hum = target and target:FindFirstChildWhichIsA("Humanoid")
+    if not hum then return false end
+
+    local animator = hum:FindFirstChildWhichIsA("Animator")
+    if not animator then return false end
+
+    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+        if AntiM1Animations[track.Animation.AnimationId] then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function isUsingProtectedSkill(target)
+    if targetUsingRageAnim(target) then return true end
+
+    for skill in pairs(SkillSet) do
+        if target:FindFirstChild(skill) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function getHum()
+    local char = LP.Character
+    return char and char:FindFirstChildWhichIsA("Humanoid")
+end
+
+local function updateAutoRotate(enabled)
+    local hum = getHum()
+    if hum then hum.AutoRotate = enabled end
+end
+
+----------------------------------------------------
+-- M1 FIRE
+----------------------------------------------------
+local LastM1 = 0
+local Cooldown = 0.1
+
+local function fireM1()
+    if tick() - LastM1 < Cooldown then return end
+    LastM1 = tick()
+    RemoteEvent:FireServer("UseActorAbility", {CurrentBuffer})
+end
+
+----------------------------------------------------
+-- LOOP (GIỮ NGUYÊN)
+----------------------------------------------------
+RunService.RenderStepped:Connect(function()
+    if not getgenv().AutoM1 then return end
+
+    if not isKiller() then
+        updateAutoRotate(true)
+        return
+    end
+
+    local char = LP.Character
+    local hum = getHum()
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+
+    if not hum or not root or hum.Health <= 0 then return end
+
+    local target = getNearestSur()
+    if not target then
+        updateAutoRotate(true)
+        return
+    end
+
+    if isUsingProtectedSkill(target) then
+        updateAutoRotate(true)
+        return
+    end
+
+    local tr = target:FindFirstChild("HumanoidRootPart")
+    if not tr then return end
+
+    if getgenv().FacingCheckEnabled and not isFacing(root, tr) then
+        updateAutoRotate(true)
+        return
+    end
+
+    fireM1()
+
+    if getgenv().AimEnabled then
+        local lookPos = Vector3.new(tr.Position.X, root.Position.Y, tr.Position.Z)
+        updateAutoRotate(false)
+        root.CFrame = root.CFrame:Lerp(CFrame.lookAt(root.Position, lookPos), 0.9)
+    else
+        updateAutoRotate(true)
+    end
+end)
+
+if LP.Character then updateBuffer() end
+
+----------------------------------------------------
+-- ✅ UI (COMBAT TAB)
+----------------------------------------------------
+Combat:CreateToggle({
+    Name = "Auto M1",
+    CurrentValue = false,
+    Callback = function(v)
+        getgenv().AutoM1 = v
+    end
+})
+
+Combat:CreateToggle({
+    Name = "Facing Check",
+    CurrentValue = true,
+    Callback = function(v)
+        getgenv().FacingCheckEnabled = v
+    end
+})
+
+Combat:CreateInput({
+    Name = "Rage",
+    PlaceholderText = "15",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(t)
+        local n = tonumber(t)
+        if n then
+            getgenv().AimDistance = math.clamp(n, 1, 50)
+        end
+    end
+})
