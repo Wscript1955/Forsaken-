@@ -1817,24 +1817,14 @@ Support:CreateButton({
     end
 })
 
+
 -- =========================
 -- Stamina Settings (Main)
 -- =========================
 
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local LP = Players.LocalPlayer
-
 local staminaLoopToggle = false
-local maxStamina = 100
-local minStamina = 0
-local staminaGain = 20
-local staminaLoss = 10
-local sprintSpeed = 26
-local staminaLossDisabled = false
 
-local DEFAULT = {
+local DEFAULTS = {
     MaxStamina = 100,
     MinStamina = 0,
     StaminaGain = 20,
@@ -1843,20 +1833,74 @@ local DEFAULT = {
     StaminaLossDisabled = false
 }
 
+local maxStamina = DEFAULTS.MaxStamina
+local minStamina = DEFAULTS.MinStamina
+local staminaGain = DEFAULTS.StaminaGain
+local staminaLoss = DEFAULTS.StaminaLoss
+local sprintSpeed = DEFAULTS.SprintSpeed
+local staminaLossDisabled = DEFAULTS.StaminaLossDisabled
+
 Main:CreateSection("Stamina Settings")
 
 Main:CreateToggle({
    Name = "Inject Stamina",
    CurrentValue = false,
+   Flag = "Main_StaminaLoopToggle",
    Callback = function(Value)
       staminaLoopToggle = Value
    end,
 })
 
 Main:CreateInput({
+   Name = "Max Stamina",
+   PlaceholderText = "e.g. 100",
+   CurrentValue = tostring(maxStamina),
+   RemoveTextAfterFocusLost = false,
+   Flag = "Main_MaxStaminaInput",
+   Callback = function(Text)
+      maxStamina = tonumber(Text) or maxStamina
+   end,
+})
+
+Main:CreateInput({
+   Name = "Min Stamina",
+   PlaceholderText = "e.g. 0",
+   CurrentValue = tostring(minStamina),
+   RemoveTextAfterFocusLost = false,
+   Flag = "Main_MinStaminaInput",
+   Callback = function(Text)
+      minStamina = tonumber(Text) or minStamina
+   end,
+})
+
+Main:CreateInput({
+   Name = "Stamina Gain",
+   PlaceholderText = "e.g. 20",
+   CurrentValue = tostring(staminaGain),
+   RemoveTextAfterFocusLost = false,
+   Flag = "Main_StaminaGainInput",
+   Callback = function(Text)
+      staminaGain = tonumber(Text) or staminaGain
+   end,
+})
+
+Main:CreateInput({
+   Name = "Stamina Loss",
+   PlaceholderText = "e.g. 10",
+   CurrentValue = tostring(staminaLoss),
+   RemoveTextAfterFocusLost = false,
+   Flag = "Main_StaminaLossInput",
+   Callback = function(Text)
+      staminaLoss = tonumber(Text) or staminaLoss
+   end,
+})
+
+Main:CreateInput({
    Name = "Sprint Speed",
+   PlaceholderText = "e.g. 26",
    CurrentValue = tostring(sprintSpeed),
    RemoveTextAfterFocusLost = false,
+   Flag = "Main_SprintSpeedInput",
    Callback = function(Text)
       sprintSpeed = tonumber(Text) or sprintSpeed
    end,
@@ -1865,32 +1909,37 @@ Main:CreateInput({
 Main:CreateToggle({
    Name = "Disable Stamina Loss",
    CurrentValue = false,
+   Flag = "Main_ToggleStaminaLossDisabled",
    Callback = function(Value)
       staminaLossDisabled = Value
    end,
 })
 
--- ✅ RESET FIX
 Main:CreateButton({
-    Name = "Reset Stamina",
-    Callback = function()
-        staminaLoopToggle = false
-        maxStamina = DEFAULT.MaxStamina
-        minStamina = DEFAULT.MinStamina
-        staminaGain = DEFAULT.StaminaGain
-        staminaLoss = DEFAULT.StaminaLoss
-        sprintSpeed = DEFAULT.SprintSpeed
-        staminaLossDisabled = DEFAULT.StaminaLossDisabled
-    end
+   Name = "Reset Stamina",
+   Callback = function()
+      maxStamina = DEFAULTS.MaxStamina
+      minStamina = DEFAULTS.MinStamina
+      staminaGain = DEFAULTS.StaminaGain
+      staminaLoss = DEFAULTS.StaminaLoss
+      sprintSpeed = DEFAULTS.SprintSpeed
+      staminaLossDisabled = DEFAULTS.StaminaLossDisabled
+
+      Rayfield:Notify({
+         Title = "Stamina Reset",
+         Content = "Restored default stamina values",
+         Duration = 3
+      })
+   end,
 })
 
 -- =========================
--- Apply Logic (FIXED)
+-- Apply Logic (FULL FIX)
 -- =========================
 
 task.spawn(function()
 
-    local SprintingModule = ReplicatedStorage
+    local SprintingModule = game:GetService("ReplicatedStorage")
         :WaitForChild("Systems")
         :WaitForChild("Character")
         :WaitForChild("Game")
@@ -1898,38 +1947,52 @@ task.spawn(function()
 
     local stamina = require(SprintingModule)
 
-    while task.wait(0.1) do
+    local function applyDefaults()
+        stamina.MaxStamina = DEFAULTS.MaxStamina
+        stamina.MinStamina = DEFAULTS.MinStamina
+        stamina.StaminaGain = DEFAULTS.StaminaGain
+        stamina.StaminaLoss = DEFAULTS.StaminaLoss
+        stamina.SprintSpeed = DEFAULTS.SprintSpeed
+        stamina.StaminaLossDisabled = DEFAULTS.StaminaLossDisabled
+    end
 
-        local char = LP.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local function applyInjected()
+        stamina.MaxStamina = maxStamina
+        stamina.MinStamina = minStamina
+        stamina.StaminaGain = staminaGain
+        stamina.StaminaLoss = staminaLoss
+        stamina.SprintSpeed = sprintSpeed
+        stamina.StaminaLossDisabled = staminaLossDisabled
+    end
+
+    while task.wait(0.2) do
+
+        -- Nếu game reset module (Forsaken hay làm vậy)
+        if not stamina or type(stamina) ~= "table" then
+            stamina = require(SprintingModule)
+        end
 
         if staminaLoopToggle then
-
-            stamina.MaxStamina = maxStamina
-            stamina.MinStamina = minStamina
-            stamina.StaminaGain = staminaGain
-            stamina.StaminaLoss = staminaLoss
-            stamina.SprintSpeed = sprintSpeed
-            stamina.StaminaLossDisabled = staminaLossDisabled
-
-            -- ✅ FORCE SPEED APPLY
-            if hum then
-                hum.WalkSpeed = sprintSpeed
-            end
-
+            applyInjected()
         else
-
-            stamina.MaxStamina = DEFAULT.MaxStamina
-            stamina.MinStamina = DEFAULT.MinStamina
-            stamina.StaminaGain = DEFAULT.StaminaGain
-            stamina.StaminaLoss = DEFAULT.StaminaLoss
-            stamina.SprintSpeed = DEFAULT.SprintSpeed
-            stamina.StaminaLossDisabled = DEFAULT.StaminaLossDisabled
-
-            if hum then
-                hum.WalkSpeed = DEFAULT.SprintSpeed
-            end
+            applyDefaults()
         end
     end
 end)
 
+-- =========================
+-- Fix SprintSpeed Visual
+-- =========================
+
+task.spawn(function()
+    while task.wait(0.2) do
+        local char = game.Players.LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+        if hum then
+            if staminaLoopToggle then
+                hum.WalkSpeed = sprintSpeed
+            end
+        end
+    end
+end)
