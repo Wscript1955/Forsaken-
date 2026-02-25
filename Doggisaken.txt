@@ -1208,7 +1208,7 @@ if LP.Character then updateBuffer() end
 ----------------------------------------------------
 -- ✅ UI (COMBAT TAB)
 ----------------------------------------------------
-Combat:CreateSection("Auto Block")
+Combat:CreateSection("Auto M1 Killer")
 Combat:CreateToggle({
     Name = "Auto M1",
     CurrentValue = false,
@@ -1237,49 +1237,43 @@ Combat:CreateInput({
     end
 })
 
--- ===== Services =====
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
-
-local LocalPlayer = Players.LocalPlayer
-
-----------------------------------------------------
--- VARIABLES GLOBAL CHO CÁC TÍNH NĂNG KHÁC (giữ nguyên)
-----------------------------------------------------
-local autoGenEnabled = false
-local autoGenCooldown = 4
-local infStaminaEnabled = false
-local visualStaminaEnabled = false
-
--- ========== CÁC PHẦN HIỆN CÓ (GIỮ NGUYÊN) ==========
--- (đã có từ file gốc: Generator, Stamina, Visual Stamina, Auto Generator, Text ESP, Pizza Aim, Auto Slash, Chance Aim, Dusekkar Aimbot, Auto M1)
--- Vì lý do độ dài, tôi sẽ chỉ hiển thị phần thêm mới và giữ nguyên phần cũ.
--- Trong file thực tế, bạn giữ nguyên toàn bộ nội dung cũ, và chèn phần dưới đây vào cuối tab Combat, trước hoặc sau các section khác.
-
--- ========== PHẦN THÊM MỚI: AUTO BLOCK ==========
+-- ========== PHẦN AUTO BLOCK (6 NÚT + DELAY THEO KILLER) ==========
 Combat:CreateSection("Auto Block")
 
--- State variables cho Auto Block
+-- State variables
 local autoBlockEnabled = false
-local autoBlockMode = "Block"   -- "Block" hoặc "Clone"
+local autoBlockMode = "Block"          -- "Block" hoặc "Clone"
 local facingCheckEnabled = true
 local autoPunchEnabled = false
-local rage = 20                   -- khoảng cách phát hiện (dùng chung)
-local facingDotThreshold = 0.2     -- ngưỡng facing check
+local autoAimEnabled = false
+local rage = 20                         -- khoảng cách phát hiện
 
 -- Cooldown
 local lastBlockTime = 0
 local lastPunchTime = 0
 local LOCAL_BLOCK_COOLDOWN = 0.7
 local LOCAL_PUNCH_COOLDOWN = 0.6
+local AIM_WINDOW = 0.5
+local AIM_COOLDOWN = 0.6
 
 -- Animation tracking
 local blockPrevPlaying = {}       -- animation block của kẻ địch frame trước
 local punchPrevPlaying = {}       -- animation punch của local frame trước
+local lastAimTrigger = {}         -- track lần cuối aim được kích hoạt
 
--- Danh sách animation ID từ skid123
+-- Killer names và delay map (từ skid123)
+local killerNames = {"c00lkidd", "Jason", "JohnDoe", "1x1x1x1", "Noli", "Slasher", "Sixer", "Nosferatu"}
+local killerDelayMap = {
+    ["c00lkidd"] = 0,
+    ["jason"]    = 0.005,
+    ["slasher"]  = 0.005,
+    ["1x1x1x1"]  = 0.15,
+    ["johndoe"]  = 0.33,
+    ["noli"]     = 0.14,
+    ["nosferatu"] = 0.7,
+}
+
+-- Animation IDs từ skid123
 local autoBlockTriggerAnims = {
     "105458270463374", "126830014841198", "129260077168659", "114375669802778",
     "80208162053146", "135853087227453", "88451353906104", "116618003477002",
@@ -1337,19 +1331,28 @@ local function fireRemotePunch()
     )
 end
 
+-- Facing check (dot mặc định -0.3 như skid123)
 local function isFacing(localRoot, targetRoot)
     if not facingCheckEnabled then return true end
     if not localRoot or not targetRoot then return false end
     local toTarget = (targetRoot.Position - localRoot.Position).Unit
     local forward = localRoot.CFrame.LookVector
-    return toTarget:Dot(forward) > facingDotThreshold
+    return toTarget:Dot(forward) > -0.3
 end
 
+-- Lấy HumanoidRootPart của local
 local function getLocalRoot()
     local char = LocalPlayer.Character
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
+-- Lấy Humanoid của local
+local function getLocalHumanoid()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+-- Lấy danh sách người chơi khác
 local function getOtherPlayers()
     local others = {}
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -1358,7 +1361,62 @@ local function getOtherPlayers()
     return others
 end
 
--- UI Controls
+-- Lấy killer gần nhất trong tầm rage (theo tên trong danh sách killerNames)
+local function getNearestKillerInRange()
+    local myRoot = getLocalRoot()
+    if not myRoot then return nil end
+    local nearest = nil
+    local minDist = math.huge
+    for _, plr in ipairs(getOtherPlayers()) do
+        local char = plr.Character
+        if char then
+            local isKiller = false
+            for _, name in ipairs(killerNames) do
+                if char.Name:lower():find(name:lower()) then
+                    isKiller = true
+                    break
+                end
+            end
+            if isKiller then
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    local dist = (root.Position - myRoot.Position).Magnitude
+                    if dist < minDist and dist <= rage then
+                        minDist = dist
+                        nearest = root
+                    end
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+-- Lấy delay dựa trên tên killer (từ model)
+local function getBlockDelayForKiller(killerModel)
+    if not killerModel then return 0 end
+    local name = killerModel.Name:lower()
+    return killerDelayMap[name] or 0
+end
+
+-- Lấy số charges từ nút Punch
+local function getPunchCharges()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return 0 end
+    local mainUI = playerGui:FindFirstChild("MainUI")
+    if not mainUI then return 0 end
+    local ability = mainUI:FindFirstChild("AbilityContainer")
+    if not ability then return 0 end
+    local punchBtn = ability:FindFirstChild("Punch")
+    if not punchBtn then return 0 end
+    local charges = punchBtn:FindFirstChild("Charges")
+    if not charges then return 0 end
+    local text = charges.Text
+    local num = tonumber(text)
+    return num or 0
+end
+
+-- UI Controls (6 nút)
 Combat:CreateToggle({
     Name = "Auto Block",
     CurrentValue = false,
@@ -1396,16 +1454,20 @@ Combat:CreateToggle({
     Callback = function(v) autoPunchEnabled = v end
 })
 
--- Main loop xử lý Auto Block và Auto Punch (chạy cùng RenderStepped)
--- (Đoạn này nên đặt sau tất cả các UI controls, nhưng trước end của file)
--- Lưu ý: file đã có nhiều connection RenderStepped, ta có thể gộp hoặc thêm một connection riêng.
--- Để an toàn, ta tạo một connection riêng và đặt tên biến tránh trùng.
+Combat:CreateToggle({
+    Name = "Punch Aim",
+    CurrentValue = false,
+    Callback = function(v) autoAimEnabled = v end
+})
+
+-- Main loop
 local autoBlockConnection = RunService.RenderStepped:Connect(function()
     local myRoot = getLocalRoot()
     if not myRoot then return end
     local now = tick()
+    local myHum = getLocalHumanoid()
 
-    -- AUTO BLOCK
+    -- AUTO BLOCK (dựa trên animation của kẻ địch + delay theo killer)
     if autoBlockEnabled then
         local others = getOtherPlayers()
         local currentBlockPlaying = {}
@@ -1425,13 +1487,18 @@ local autoBlockConnection = RunService.RenderStepped:Connect(function()
                                 if animId and table.find(autoBlockTriggerAnims, animId) then
                                     currentBlockPlaying[animId] = true
                                     if not blockPrevPlaying[animId] and isFacing(myRoot, root) then
-                                        if autoBlockMode == "Block" and (now - lastBlockTime) > LOCAL_BLOCK_COOLDOWN then
-                                            fireRemoteBlock()
-                                            lastBlockTime = now
-                                        elseif autoBlockMode == "Clone" and (now - lastBlockTime) > LOCAL_BLOCK_COOLDOWN then
-                                            fireRemoteClone()
-                                            lastBlockTime = now
-                                        end
+                                        -- Lấy delay dựa trên tên killer
+                                        local delay = getBlockDelayForKiller(char)
+                                        task.delay(delay, function()
+                                            if autoBlockEnabled and (tick() - lastBlockTime) > LOCAL_BLOCK_COOLDOWN then
+                                                if autoBlockMode == "Block" then
+                                                    fireRemoteBlock()
+                                                elseif autoBlockMode == "Clone" then
+                                                    fireRemoteClone()
+                                                end
+                                                lastBlockTime = tick()
+                                            end
+                                        end)
                                     end
                                 end
                             end
@@ -1445,58 +1512,64 @@ local autoBlockConnection = RunService.RenderStepped:Connect(function()
         blockPrevPlaying = {}
     end
 
-    -- AUTO PUNCH + AIM (smoothing 0.7)
-    if autoPunchEnabled then
-        local myHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-        if myHum then
-            local animator = myHum:FindFirstChildOfClass("Animator")
-            if animator then
-                local tracks = animator:GetPlayingAnimationTracks()
-                local currentPunchPlaying = {}
-                for _, track in ipairs(tracks) do
-                    local animId = tostring(track.Animation and track.Animation.AnimationId or ""):match("%d+")
-                    if animId and table.find(punchAnimIds, animId) then
-                        currentPunchPlaying[animId] = true
-                        if not punchPrevPlaying[animId] then
-                            if (now - lastPunchTime) > LOCAL_PUNCH_COOLDOWN then
-                                fireRemotePunch()
-                                lastPunchTime = now
-                            end
-                        end
-                        -- Aim smoothing 0.7
-                        local nearestDist = math.huge
-                        local targetRoot = nil
-                        for _, plr in ipairs(getOtherPlayers()) do
-                            local char = plr.Character
-                            if char then
-                                local root = char:FindFirstChild("HumanoidRootPart")
-                                if root then
-                                    local d = (root.Position - myRoot.Position).Magnitude
-                                    if d < nearestDist and d <= rage then
-                                        nearestDist = d
-                                        targetRoot = root
+    -- AUTO PUNCH (giống skid123: cần charges = 1 và có killer trong range <= 10)
+    if autoPunchEnabled and myHum then
+        local charges = getPunchCharges()
+        if charges >= 1 then
+            local targetRoot = getNearestKillerInRange()
+            if targetRoot and (targetRoot.Position - myRoot.Position).Magnitude <= math.min(rage, 10) then
+                if (now - lastPunchTime) > LOCAL_PUNCH_COOLDOWN then
+                    fireRemotePunch()
+                    lastPunchTime = now
+                end
+            end
+        end
+    end
+
+    -- PUNCH AIM (giống aimPunch trong skid123, dùng predictionValue = 4 mặc định)
+    if autoAimEnabled and myHum then
+        local animator = myHum:FindFirstChildOfClass("Animator")
+        if animator then
+            local tracks = animator:GetPlayingAnimationTracks()
+            for _, track in ipairs(tracks) do
+                local animId = tostring(track.Animation and track.Animation.AnimationId or ""):match("%d+")
+                if animId and table.find(punchAnimIds, animId) then
+                    local last = lastAimTrigger[track]
+                    if not last or (now - last) > AIM_COOLDOWN then
+                        local timePos = 0
+                        pcall(function() timePos = track.TimePosition end)
+                        if timePos <= 0.1 then
+                            lastAimTrigger[track] = now
+                            local targetRoot = getNearestKillerInRange()
+                            if targetRoot then
+                                -- Tính vị trí dự đoán (lookVector * 4)
+                                local predictedPos = targetRoot.Position + (targetRoot.CFrame.LookVector * 4)
+                                -- Aim trong AIM_WINDOW (0.5s)
+                                task.spawn(function()
+                                    local start = now
+                                    while tick() - start < AIM_WINDOW do
+                                        if myRoot and myRoot.Parent and targetRoot and targetRoot.Parent then
+                                            local lookPos = Vector3.new(predictedPos.X, myRoot.Position.Y, predictedPos.Z)
+                                            myRoot.CFrame = myRoot.CFrame:Lerp(CFrame.lookAt(myRoot.Position, lookPos), 0.7)
+                                        end
+                                        task.wait()
                                     end
-                                end
+                                end)
                             end
-                        end
-                        if targetRoot then
-                            local lookPos = Vector3.new(targetRoot.Position.X, myRoot.Position.Y, targetRoot.Position.Z)
-                            myRoot.CFrame = myRoot.CFrame:Lerp(CFrame.lookAt(myRoot.Position, lookPos), 0.7)
                         end
                     end
                 end
-                punchPrevPlaying = currentPunchPlaying
             end
         end
-    else
-        punchPrevPlaying = {}
     end
 end)
 
--- Dọn dẹp khi nhân vật hồi sinh
+-- Reset trạng thái khi nhân vật hồi sinh
 LocalPlayer.CharacterAdded:Connect(function()
     punchPrevPlaying = {}
     blockPrevPlaying = {}
+    lastAimTrigger = {}
     lastBlockTime = 0
     lastPunchTime = 0
 end)
+-- ========== KẾT THÚC PHẦN AUTO BLOCK ==========
