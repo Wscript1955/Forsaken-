@@ -342,7 +342,8 @@ RunService.RenderStepped:Connect(function()
 end)
 
 ----------------------------------------------------
--- ✅ PIZZA AIM – BIẾN GỐC (GIỮ NGUYÊN)
+----------------------------------------------------
+-- ✅ PIZZA AIM VARIABLES
 ----------------------------------------------------
 getgenv().PizzaAimEnabled = false
 getgenv().PizzaAimDistance = 100
@@ -410,7 +411,9 @@ dropdown = Combat:CreateDropdown({
         if not option then return end
 
         local survivorsFolder = Workspace:WaitForChild("Players"):WaitForChild("Survivors")
-        getgenv().SelectedTarget = survivorsFolder:FindFirstChild(option)
+        local target = survivorsFolder:FindFirstChild(option)
+
+        getgenv().SelectedTarget = target
     end
 })
 
@@ -422,7 +425,7 @@ Combat:CreateButton({
 refreshTargets()
 
 ----------------------------------------------------
--- ✅ LOGIC AIM (GIỮ NGUYÊN + thêm Manual Mode)
+-- ✅ AIM LOGIC
 ----------------------------------------------------
 local PizzaAnimation = {
     ["114155003741146"] = true,
@@ -499,14 +502,35 @@ RunService.RenderStepped:Connect(function()
 
     local playing = isLocalPlayerPlayingAnimation()
 
-    if playing and not currentTarget then
-        if getgenv().TargetMode and getgenv().SelectedTarget then
-            currentTarget = getgenv().SelectedTarget
+    ------------------------------------------------
+    -- ✅ TARGET SELECTION FIX
+    ------------------------------------------------
+    if playing then
+
+        if getgenv().TargetMode then
+            local sel = getgenv().SelectedTarget
+
+            if sel
+            and sel.Parent
+            and sel:FindFirstChild("HumanoidRootPart")
+            and sel:FindFirstChildWhichIsA("Humanoid")
+            and sel:FindFirstChildWhichIsA("Humanoid").Health > 0 then
+
+                currentTarget = sel
+            else
+                currentTarget = nil
+            end
+
         else
-            currentTarget = getWeakestSurvivor()
+            if not currentTarget then
+                currentTarget = getWeakestSurvivor()
+            end
         end
     end
 
+    ------------------------------------------------
+    -- ✅ RESET WHEN ANIMATION STOPS
+    ------------------------------------------------
     if not playing and wasPlaying then
         currentTarget = nil
         hum.AutoRotate = true
@@ -515,8 +539,12 @@ RunService.RenderStepped:Connect(function()
 
     wasPlaying = playing
 
+    ------------------------------------------------
+    -- ✅ AIM ROTATION
+    ------------------------------------------------
     if playing and currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
         local hrp = currentTarget.HumanoidRootPart
+
         hum.AutoRotate = false
         autoRotateOff = true
 
@@ -525,6 +553,9 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+----------------------------------------------------
+-- ✅ CHARACTER RESET FIX
+----------------------------------------------------
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
     currentTarget = nil
