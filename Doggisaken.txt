@@ -1916,21 +1916,133 @@ Main:CreateToggle({
 })
 
 Main:CreateButton({
-   Name = "Reset Stamina",
-   Callback = function()
-      maxStamina = DEFAULTS.MaxStamina
-      minStamina = DEFAULTS.MinStamina
-      staminaGain = DEFAULTS.StaminaGain
-      staminaLoss = DEFAULTS.StaminaLoss
-      sprintSpeed = DEFAULTS.SprintSpeed
-      staminaLossDisabled = DEFAULTS.StaminaLossDisabled
+    Name = "Reset Stamina",
+    Callback = function()
 
-      Rayfield:Notify({
-         Title = "Stamina Reset",
-         Content = "Restored default stamina values",
-         Duration = 3
-      })
-   end,
+        local LP = game.Players.LocalPlayer
+        local char = LP.Character
+        if not char then return end
+
+        local SprintingModule = game:GetService("ReplicatedStorage")
+            :WaitForChild("Systems")
+            :WaitForChild("Character")
+            :WaitForChild("Game")
+            :WaitForChild("Sprinting")
+
+        local stamina = require(SprintingModule)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+
+        local killerStats = {
+
+            ["slasher"] = {
+                WalkSpeed = 9,
+                SprintSpeed = 28,
+                MaxStamina = 110,
+                StaminaLoss = 9.5,
+                StaminaGain = 21
+            },
+
+            ["c00lkidd"] = {
+                WalkSpeed = 7.75,
+                SprintSpeed = 28,
+                MaxStamina = 110,
+                StaminaLoss = 9.5,
+                StaminaGain = 21
+            },
+
+            ["johndoe"] = {
+                WalkSpeed = 9,
+                SprintSpeed = 27.25,
+                MaxStamina = 110,
+                StaminaLoss = 9.5,
+                StaminaGain = 21
+            },
+
+            ["noli"] = {
+                WalkSpeed = 7.5,
+                SprintSpeed = 27.5,
+                MaxStamina = 110,
+                StaminaLoss = 9.5,
+                StaminaGain = 21
+            },
+
+            ["1x1x1x1"] = {
+                WalkSpeed = 8.5,
+                SprintSpeed = 27,
+                MaxStamina = 110,
+                StaminaLoss = 9.5,
+                StaminaGain = 21
+            },
+
+            ["guest666"] = {
+                WalkSpeed = 9,
+                SprintSpeed = 27,
+                MaxStamina = 110,
+                StaminaLoss = 9.5,
+                StaminaGain = 21
+            },
+
+            ["sixer"] = {
+                WalkSpeed = 9,
+                SprintSpeed = 27,
+                MaxStamina = 110,
+                StaminaLoss = 9.5,
+                StaminaGain = 21
+            },
+
+            ["nosferatu"] = {
+                WalkSpeed = 7.25,
+                SprintSpeed = 27.5,
+                MaxStamina = 110,
+                StaminaLoss = 9.5,
+                StaminaGain = 21
+            }
+        }
+
+        --------------------------------------------------
+        -- Detect killer name
+        --------------------------------------------------
+
+        local name = char.Name:lower():gsub("%s+", "")
+        local applied = false
+
+        for killerName, stats in pairs(killerStats) do
+            if name:find(killerName) then
+
+                stamina.MaxStamina = stats.MaxStamina
+                stamina.MinStamina = 0
+                stamina.StaminaGain = stats.StaminaGain
+                stamina.StaminaLoss = stats.StaminaLoss
+                stamina.SprintSpeed = stats.SprintSpeed
+                stamina.StaminaLossDisabled = false
+
+                if hum then
+                    hum.WalkSpeed = stats.WalkSpeed
+                end
+
+                applied = true
+                break
+            end
+        end
+
+        --------------------------------------------------
+        -- Survivor fallback (normal stamina)
+        --------------------------------------------------
+
+        if not applied then
+            stamina.MaxStamina = 100
+            stamina.MinStamina = 0
+            stamina.StaminaGain = 20
+            stamina.StaminaLoss = 10
+            stamina.SprintSpeed = 26
+            stamina.StaminaLossDisabled = false
+
+            if hum then
+                hum.WalkSpeed = 16
+            end
+        end
+    end
+})
 })
 
 -- =========================
@@ -1939,47 +2051,50 @@ Main:CreateButton({
 
 task.spawn(function()
 
-    local SprintingModule = game:GetService("ReplicatedStorage")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local SprintingModule = ReplicatedStorage
         :WaitForChild("Systems")
         :WaitForChild("Character")
         :WaitForChild("Game")
         :WaitForChild("Sprinting")
 
-    local stamina = require(SprintingModule)
+    local stamina
 
-    local function applyDefaults()
-        stamina.MaxStamina = DEFAULTS.MaxStamina
-        stamina.MinStamina = DEFAULTS.MinStamina
-        stamina.StaminaGain = DEFAULTS.StaminaGain
-        stamina.StaminaLoss = DEFAULTS.StaminaLoss
-        stamina.SprintSpeed = DEFAULTS.SprintSpeed
-        stamina.StaminaLossDisabled = DEFAULTS.StaminaLossDisabled
+    local function getStamina()
+        local ok, mod = pcall(require, SprintingModule)
+        if ok then
+            stamina = mod
+        end
     end
 
-    local function applyInjected()
-        stamina.MaxStamina = maxStamina
-        stamina.MinStamina = minStamina
-        stamina.StaminaGain = staminaGain
-        stamina.StaminaLoss = staminaLoss
-        stamina.SprintSpeed = sprintSpeed
-        stamina.StaminaLossDisabled = staminaLossDisabled
-    end
+    getStamina()
 
     while task.wait(0.2) do
 
-        -- Nếu game reset module (Forsaken hay làm vậy)
+        -- ✅ Nếu game reset module → require lại
         if not stamina or type(stamina) ~= "table" then
-            stamina = require(SprintingModule)
+            getStamina()
         end
 
-        if staminaLoopToggle then
-            applyInjected()
-        else
-            applyDefaults()
+        if stamina then
+            if staminaLoopToggle then
+                stamina.MaxStamina = maxStamina
+                stamina.MinStamina = minStamina
+                stamina.StaminaGain = staminaGain
+                stamina.StaminaLoss = staminaLoss
+                stamina.SprintSpeed = sprintSpeed
+                stamina.StaminaLossDisabled = staminaLossDisabled
+            else
+                stamina.MaxStamina = 100
+                stamina.MinStamina = 0
+                stamina.StaminaGain = 20
+                stamina.StaminaLoss = 10
+                stamina.SprintSpeed = 26
+                stamina.StaminaLossDisabled = false
+            end
         end
     end
 end)
-
 -- =========================
 -- Fix SprintSpeed Visual
 -- =========================
