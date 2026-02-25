@@ -341,7 +341,7 @@ RunService.RenderStepped:Connect(function()
 
 end)
 
-----------------------------------------------------
+-------------------------------------------------------
 -- ✅ SERVICES
 ----------------------------------------------------
 local Players = game:GetService("Players")
@@ -351,7 +351,7 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 ----------------------------------------------------
--- ✅ GLOBAL STATES
+-- ✅ GLOBAL STATES (GIỐNG GỐC)
 ----------------------------------------------------
 getgenv().PizzaAimEnabled = false
 getgenv().PizzaAimDistance = 100
@@ -359,7 +359,7 @@ getgenv().TargetMode = false
 getgenv().SelectedTarget = nil
 
 ----------------------------------------------------
--- ✅ UI (COMBAT TAB)
+-- ✅ UI (Combat Tab)
 ----------------------------------------------------
 Combat:CreateSection("Pizza Aimbot")
 
@@ -377,7 +377,9 @@ Combat:CreateInput({
     RemoveTextAfterFocusLost = false,
     Callback = function(t)
         local n = tonumber(t)
-        if n then getgenv().PizzaAimDistance = n end
+        if n then
+            getgenv().PizzaAimDistance = n
+        end
     end
 })
 
@@ -391,11 +393,10 @@ Combat:CreateToggle({
 })
 
 ----------------------------------------------------
--- ✅ TARGET LIST (FIX MẤT PLAYER)
+-- ✅ PLAYER LIST (USER)
 ----------------------------------------------------
 local dropdown
 local currentOptions = {}
-local refreshing = false
 
 local function buildPlayerList()
     local list = {}
@@ -407,41 +408,13 @@ local function buildPlayerList()
     return list
 end
 
-local function sameList(a, b)
-    if #a ~= #b then return false end
-    for i = 1, #a do
-        if a[i] ~= b[i] then return false end
-    end
-    return true
-end
-
 local function refreshTargets()
-    if refreshing then return end
-    refreshing = true
-
     local newList = buildPlayerList()
-
-    -- ❗ KHÔNG REFRESH NẾU RỖNG
-    if #newList == 0 then
-        refreshing = false
-        return
-    end
-
-    -- ❗ KHÔNG REFRESH NẾU GIỐNG HỆT
-    if sameList(newList, currentOptions) then
-        refreshing = false
-        return
-    end
-
     currentOptions = newList
 
     if dropdown then
         dropdown:Refresh(newList, true)
     end
-
-    task.delay(0.25, function()
-        refreshing = false
-    end)
 end
 
 dropdown = Combat:CreateDropdown({
@@ -449,8 +422,8 @@ dropdown = Combat:CreateDropdown({
     Options = currentOptions,
     CurrentOption = nil,
     Callback = function(opt)
-        local plr = Players:FindFirstChild(opt)
-        getgenv().SelectedTarget = plr
+        local name = typeof(opt) == "table" and opt[1] or opt
+        getgenv().SelectedTarget = Players:FindFirstChild(name)
     end
 })
 
@@ -459,20 +432,13 @@ Combat:CreateButton({
     Callback = refreshTargets
 })
 
--- AUTO REFRESH NHẸ
-task.spawn(function()
-    while task.wait(3) do
-        refreshTargets()
-    end
-end)
-
 Players.PlayerAdded:Connect(refreshTargets)
 Players.PlayerRemoving:Connect(refreshTargets)
 
-refreshTargets()
+task.delay(1, refreshTargets)
 
 ----------------------------------------------------
--- ✅ ANIMATION CHECK
+-- ✅ ANIMATION CHECK (GIỮ NGUYÊN)
 ----------------------------------------------------
 local PizzaAnimation = {
     ["114155003741146"] = true,
@@ -481,11 +447,11 @@ local PizzaAnimation = {
 }
 
 local function getHumanoid()
-    local c = LocalPlayer.Character
-    return c and c:FindFirstChildWhichIsA("Humanoid")
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChildWhichIsA("Humanoid")
 end
 
-local function isPlayingPizza()
+local function isLocalPlayerPlayingAnimation()
     local hum = getHumanoid()
     local animator = hum and hum:FindFirstChildOfClass("Animator")
     if not animator then return false end
@@ -493,15 +459,17 @@ local function isPlayingPizza()
     for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
         local id = track.Animation and track.Animation.AnimationId
         id = id and id:match("%d+")
+
         if id and PizzaAnimation[id] then
             return true
         end
     end
+
     return false
 end
 
 ----------------------------------------------------
--- ✅ LOGIC CŨ (WEAKEST)
+-- ✅ LOGIC WEAKEST (GIỮ NGUYÊN)
 ----------------------------------------------------
 local function getWeakestSurvivor()
     local folder = Workspace:WaitForChild("Players"):WaitForChild("Survivors")
@@ -515,6 +483,7 @@ local function getWeakestSurvivor()
         if m:IsA("Model") and m ~= myChar then
             local h = m:FindFirstChildWhichIsA("Humanoid")
             local r = m:FindFirstChild("HumanoidRootPart")
+
             if h and r and h.Health > 0 then
                 local d = (r.Position - myRoot.Position).Magnitude
                 if d <= getgenv().PizzaAimDistance and h.Health < lowest then
@@ -524,20 +493,34 @@ local function getWeakestSurvivor()
             end
         end
     end
+
     return weakest
 end
 
 ----------------------------------------------------
--- ✅ AIM LOOP
+-- ✅ TARGET PLAYER → MODEL
 ----------------------------------------------------
-local currentTarget = nil
-local wasPlaying = false
-local autoRotateOff = false
+local function getSelectedCharacter()
+    local plr = getgenv().SelectedTarget
+    local char = plr and plr.Character
+    local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+
+    if char and hum and root and hum.Health > 0 then
+        return char
+    end
+end
+
+----------------------------------------------------
+-- ✅ AIM LOOP (FLOW GỐC 100%)
+----------------------------------------------------
+local currentTarget, wasPlaying, autoRotateOff = nil, false, false
 
 RunService.RenderStepped:Connect(function()
+
     if not getgenv().PizzaAimEnabled then
-        currentTarget = nil
-        wasPlaying = false
+        currentTarget, wasPlaying = nil, false
+
         if autoRotateOff then
             local h = getHumanoid()
             if h then h.AutoRotate = true end
@@ -547,28 +530,18 @@ RunService.RenderStepped:Connect(function()
     end
 
     local hum = getHumanoid()
-    local char = hum and hum.Parent
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local root = hum and hum.Parent:FindFirstChild("HumanoidRootPart")
     if not hum or not root then return end
 
-    local playing = isPlayingPizza()
+    local playing = isLocalPlayerPlayingAnimation()
 
-    if playing then
+    -- ✅ GIỮ FLOW GỐC
+    if playing and not currentTarget then
+
         if getgenv().TargetMode then
-            local plr = getgenv().SelectedTarget
-            local tChar = plr and plr.Character
-            if tChar
-                and tChar:FindFirstChild("HumanoidRootPart")
-                and tChar:FindFirstChildWhichIsA("Humanoid")
-                and tChar:FindFirstChildWhichIsA("Humanoid").Health > 0 then
-                currentTarget = tChar
-            else
-                currentTarget = nil
-            end
+            currentTarget = getSelectedCharacter()
         else
-            if not currentTarget then
-                currentTarget = getWeakestSurvivor()
-            end
+            currentTarget = getWeakestSurvivor()
         end
     end
 
@@ -577,14 +550,17 @@ RunService.RenderStepped:Connect(function()
         hum.AutoRotate = true
         autoRotateOff = false
     end
+
     wasPlaying = playing
 
     if playing and currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
+        local hrp = currentTarget.HumanoidRootPart
+
         hum.AutoRotate = false
         autoRotateOff = true
-        local tr = currentTarget.HumanoidRootPart
-        local look = Vector3.new(tr.Position.X, root.Position.Y, tr.Position.Z)
-        root.CFrame = root.CFrame:Lerp(CFrame.lookAt(root.Position, look), 0.9)
+
+        local look = Vector3.new(hrp.Position.X, root.Position.Y, hrp.Position.Z)
+        root.CFrame = root.CFrame:Lerp(CFrame.lookAt(root.Position, look), 0.95)
     end
 end)
 
