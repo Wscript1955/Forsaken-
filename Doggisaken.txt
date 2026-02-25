@@ -21,7 +21,6 @@ local Window = Rayfield:CreateWindow({
         FileName = "DoggiSaken"  -- tên file
     }
 })
-})
 
 local Main = Window:CreateTab("Main")
 local ESPTab = Window:CreateTab("ESP")
