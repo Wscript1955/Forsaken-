@@ -15,6 +15,11 @@ local Window = Rayfield:CreateWindow({
    LoadingSubtitle = "mTy lazy💔",
    ToggleUIKeybind = "K",
    KeySystem = false
+   ConfigurationSaving = {
+        Enabled = true,
+        FolderName = nil,      -- lưu mặc định
+        FileName = "DoggiSaken"
+    }
 })
 
 local Main = Window:CreateTab("Main")
@@ -2041,5 +2046,12 @@ Combat:CreateToggle({
     Flag = "1x1x1x1_PredictMove",
     Callback = function(Value)
         predictMovement = Value
+    end,
+})
+local Support = Window:CreateTab("Support")
+Support:CreateButton({
+    Name = "Auto Save Settings",
+    Callback = function()
+        Rayfield:SaveConfiguration()
     end,
 })
