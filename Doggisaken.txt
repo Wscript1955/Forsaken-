@@ -1730,7 +1730,7 @@ local qteDelay = 0.05
 -- UI
 ----------------------------------------------------
 Combat:CreateToggle({
-    Name = "Auto QTE",
+    Name = "Auto QTE(Mobile)",
     CurrentValue = false,
     Callback = function(v)
         autoQTE = v
@@ -1818,6 +1818,7 @@ Support:CreateButton({
 })
 
 -- ===== 1x1x1x1 Aim =====
+Main:CreateSection("1X1X1X1 Aim")
 local toggleOn = false
 local predictMovement = false
 local aimMode = "One Player"
