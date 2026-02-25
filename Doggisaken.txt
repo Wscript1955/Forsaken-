@@ -15,17 +15,38 @@ local Window = Rayfield:CreateWindow({
    LoadingSubtitle = "mTy lazy💔",
    ToggleUIKeybind = "K",
    KeySystem = false
-   ConfigurationSaving = {
-        Enabled = true,
-        FolderName = nil,      -- lưu mặc định
-        FileName = "DoggiSaken"
-    }
 })
 
 local Main = Window:CreateTab("Main")
 local ESPTab = Window:CreateTab("ESP")
 local Combat = Window:CreateTab("Combat")
 local Support = Window:CreateTab("Support")
+local HttpService = game:GetService("HttpService")
+local FILE = "Doggisaken.json"
+
+local Settings = {
+   AutoPunchToggle = false,
+   PredictionSlider = 1,
+   Facingcheckdot = "-0.2"
+}
+
+local function SaveSettings()
+   writefile(FILE, HttpService:JSONEncode(Settings))
+end
+
+local function LoadSettings()
+   if not isfile(FILE) then return end
+
+   local ok, data = pcall(function()
+      return HttpService:JSONDecode(readfile(FILE))
+   end)
+
+   if ok and data then
+      Settings = data
+   end
+end
+
+LoadSettings()
 
 ----------------------------------------------------
 local autoGenEnabled = false
@@ -1821,6 +1842,12 @@ Support:CreateButton({
         setclipboard("https://www.youtube.com/@Wscript1955")
     end
 })
+Support:CreateButton({
+   Name = "Save Settings",
+   Callback = function()
+      SaveSettings()
+   end
+})
 
 -- =========================
 -- Variables
@@ -2046,12 +2073,5 @@ Combat:CreateToggle({
     Flag = "1x1x1x1_PredictMove",
     Callback = function(Value)
         predictMovement = Value
-    end,
-})
-local Support = Window:CreateTab("Support")
-Support:CreateButton({
-    Name = "Auto Save Settings",
-    Callback = function()
-        Rayfield:SaveConfiguration()
     end,
 })
