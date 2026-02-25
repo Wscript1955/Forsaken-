@@ -20,6 +20,7 @@ local Window = Rayfield:CreateWindow({
 local Main = Window:CreateTab("Main")
 local ESPTab = Window:CreateTab("ESP")
 local Combat = Window:CreateTab("Combat")
+local Support = Window:CreateTab("Support")
 
 ----------------------------------------------------
 local autoGenEnabled = false
@@ -980,7 +981,6 @@ Combat:CreateDropdown({
 ----------------------------------------------------
 -- ✅ AUTO M1 (COMBAT TAB VERSION)
 ----------------------------------------------------
-Combat:CreateSection("Auto M1")
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -1715,4 +1715,268 @@ RunService.Heartbeat:Connect(function()
             end
         end
     end
+end) 
+----------------------------------------------------
+-- ✅ QTE NOSFERATU
+----------------------------------------------------
+Combat:CreateSection("QTE Nosferatu")
+
+local player = game.Players.LocalPlayer
+
+local autoQTE = false
+local qteDelay = 0.05
+
+----------------------------------------------------
+-- UI
+----------------------------------------------------
+Combat:CreateToggle({
+    Name = "Auto QTE",
+    CurrentValue = false,
+    Callback = function(v)
+        autoQTE = v
+    end
+})
+
+Combat:CreateInput({
+    Name = "QTE Delay",
+    CurrentValue = tostring(qteDelay),
+    PlaceholderText = "Delay (0 - 10)",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(txt)
+        local newDelay = tonumber(txt)
+        if newDelay and newDelay >= 0 and newDelay <= 10 then
+            qteDelay = newDelay
+        end
+    end
+})
+
+----------------------------------------------------
+-- LOGIC (GIỮ NGUYÊN)
+----------------------------------------------------
+local function runAutoLoop()
+    task.spawn(function()
+        while autoQTE do
+            pcall(function()
+                local tempUI = player.PlayerGui:FindFirstChild("TemporaryUI")
+                if not tempUI then return end
+                
+                local qte = tempUI:FindFirstChild("QTE")
+                if not qte then return end
+                
+                local btn = qte:FindFirstChild("ActiveButton")
+                if not btn then return end
+                
+                for _, conn in ipairs(getconnections(btn.MouseButton1Down)) do
+                    pcall(conn.Function)
+                end
+            end)
+
+            task.wait(qteDelay)
+        end
+    end)
+end
+
+----------------------------------------------------
+-- AUTO START LOOP
+----------------------------------------------------
+task.spawn(function()
+    while task.wait(0.3) do
+        if autoQTE then
+            runAutoLoop()
+            repeat task.wait() until not autoQTE
+        end
+    end
 end)
+
+----------------------------------------------------
+-- ✅ SUPPORT TAB
+----------------------------------------------------
+Support:CreateSection("Support")
+
+Support:CreateParagraph({
+    Title = "Discord",
+    Content = "join my disc server to report bugs"
+})
+
+Support:CreateButton({
+    Name = "Join Server Discord",
+    Callback = function()
+        setclipboard("https://discord.gg/jtxyfUyJQY")
+    end
+})
+
+Support:CreateParagraph({
+    Title = "YouTube",
+    Content = "Subscribe my Yt plss🥺"
+})
+
+Support:CreateButton({
+    Name = "Link Yt",
+    Callback = function()
+        setclipboard("https://www.youtube.com/@Wscript1955")
+    end
+})
+
+-- =========================
+-- Stamina Settings (Main)
+-- =========================
+
+local staminaLoopToggle = false
+local maxStamina = 100
+local minStamina = 0
+local staminaGain = 20
+local staminaLoss = 10
+local sprintSpeed = 26
+local staminaLossDisabled = false
+
+Main:CreateSection("Stamina Settings")
+
+Main:CreateToggle({
+   Name = "Inject Stamina",
+   CurrentValue = false,
+   Flag = "Main_StaminaLoopToggle",
+   Callback = function(Value)
+      staminaLoopToggle = Value
+   end,
+})
+
+Main:CreateInput({
+   Name = "Max Stamina",
+   PlaceholderText = "e.g. 100",
+   CurrentValue = tostring(maxStamina),
+   RemoveTextAfterFocusLost = false,
+   Flag = "Main_MaxStaminaInput",
+   Callback = function(Text)
+      maxStamina = tonumber(Text) or maxStamina
+   end,
+})
+
+Main:CreateInput({
+   Name = "Min Stamina",
+   PlaceholderText = "e.g. 0",
+   CurrentValue = tostring(minStamina),
+   RemoveTextAfterFocusLost = false,
+   Flag = "Main_MinStaminaInput",
+   Callback = function(Text)
+      minStamina = tonumber(Text) or minStamina
+   end,
+})
+
+Main:CreateInput({
+   Name = "Stamina Gain",
+   PlaceholderText = "e.g. 20",
+   CurrentValue = tostring(staminaGain),
+   RemoveTextAfterFocusLost = false,
+   Flag = "Main_StaminaGainInput",
+   Callback = function(Text)
+      staminaGain = tonumber(Text) or staminaGain
+   end,
+})
+
+Main:CreateInput({
+   Name = "Stamina Loss",
+   PlaceholderText = "e.g. 10",
+   CurrentValue = tostring(staminaLoss),
+   RemoveTextAfterFocusLost = false,
+   Flag = "Main_StaminaLossInput",
+   Callback = function(Text)
+      staminaLoss = tonumber(Text) or staminaLoss
+   end,
+})
+
+Main:CreateInput({
+   Name = "Sprint Speed",
+   PlaceholderText = "e.g. 26",
+   CurrentValue = tostring(sprintSpeed),
+   RemoveTextAfterFocusLost = false,
+   Flag = "Main_SprintSpeedInput",
+   Callback = function(Text)
+      sprintSpeed = tonumber(Text) or sprintSpeed
+   end,
+})
+
+Main:CreateToggle({
+   Name = "Disable Stamina Loss",
+   CurrentValue = false,
+   Flag = "Main_ToggleStaminaLossDisabled",
+   Callback = function(Value)
+      staminaLossDisabled = Value
+   end,
+})
+
+-- ✅ RESET BUTTON
+Main:CreateButton({
+   Name = "Reset Stamina",
+   Callback = function()
+
+      maxStamina = 100
+      minStamina = 0
+      staminaGain = 20
+      staminaLoss = 10
+      sprintSpeed = 26
+      staminaLossDisabled = false
+
+   end,
+})
+
+-- =========================
+-- Apply Logic (giữ nguyên)
+-- =========================
+
+task.spawn(function()
+   local Sprinting = game:GetService("ReplicatedStorage")
+      :WaitForChild("Systems")
+      :WaitForChild("Character")
+      :WaitForChild("Game")
+      :WaitForChild("Sprinting")
+
+   local stamina = require(Sprinting)
+
+   local defaultValues = {
+      MaxStamina = 100,
+      MinStamina = 0,
+      StaminaGain = 20,
+      StaminaLoss = 10,
+      SprintSpeed = 26,
+   }
+
+   while task.wait() do
+      if staminaLoopToggle then
+         stamina.MaxStamina = maxStamina
+         stamina.MinStamina = minStamina
+         stamina.StaminaGain = staminaGain
+         stamina.StaminaLoss = staminaLoss
+         stamina.SprintSpeed = sprintSpeed
+         stamina.StaminaLossDisabled = staminaLossDisabled
+      else
+         stamina.MaxStamina = defaultValues.MaxStamina
+         stamina.MinStamina = defaultValues.MinStamina
+         stamina.StaminaGain = defaultValues.StaminaGain
+         stamina.StaminaLoss = defaultValues.StaminaLoss
+         stamina.SprintSpeed = defaultValues.SprintSpeed
+         stamina.StaminaLossDisabled = false
+      end
+   end
+end)
+
+Main:CreateButton({
+   Name = "Reset Stamina",
+   Callback = function()
+
+      staminaLoopToggle = false
+      staminaLossDisabled = false
+
+      maxStamina = defaultValues.MaxStamina
+      minStamina = defaultValues.MinStamina
+      staminaGain = defaultValues.StaminaGain
+      staminaLoss = defaultValues.StaminaLoss
+      sprintSpeed = defaultValues.SprintSpeed
+
+      stamina.MaxStamina = defaultValues.MaxStamina
+      stamina.MinStamina = defaultValues.MinStamina
+      stamina.StaminaGain = defaultValues.StaminaGain
+      stamina.StaminaLoss = defaultValues.StaminaLoss
+      stamina.SprintSpeed = defaultValues.SprintSpeed
+      stamina.StaminaLossDisabled = defaultValues.StaminaLossDisabled
+   end,
+})
