@@ -1,0 +1,532 @@
+-- ===== Services =====
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- ===== Rayfield =====
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "DoggiSaken",
+   LoadingTitle = "Loading...",
+   LoadingSubtitle = "mTy lazy💔",
+   ToggleUIKeybind = "K",
+   KeySystem = false
+})
+
+local Main = Window:CreateTab("Main")
+local ESPTab = Window:CreateTab("ESP")
+local Combat = Window:CreateTab("Combat")
+
+----------------------------------------------------
+local autoGenEnabled = false
+local autoGenCooldown = 4
+local infStaminaEnabled = false
+local visualStaminaEnabled = false
+
+----------------------------------------------------
+-- ✅ GENERATOR UI
+----------------------------------------------------
+Main:CreateSection("Generator")
+
+Main:CreateToggle({
+    Name = "Auto Generator",
+    CurrentValue = false,
+    Callback = function(v)
+        autoGenEnabled = v
+    end
+})
+
+Main:CreateSlider({
+    Name = "Cooldown",
+    Range = {1, 15},
+    Increment = 0.5,
+    Suffix = "s",
+    CurrentValue = autoGenCooldown,
+    Callback = function(v)
+        autoGenCooldown = v
+    end
+})
+
+----------------------------------------------------
+-- ✅ PLAYER UI
+----------------------------------------------------
+Main:CreateSection("Player")
+
+----------------------------------------------------
+-- ✅ STAMINA MODULE
+----------------------------------------------------
+local SprintingModule = require(
+    ReplicatedStorage
+        :WaitForChild("Systems")
+        :WaitForChild("Character")
+        :WaitForChild("Game")
+        :WaitForChild("Sprinting")
+)
+
+local defaultLoss = SprintingModule.StaminaLoss
+local defaultGain = SprintingModule.StaminaGain
+
+local function applyStamina()
+    if infStaminaEnabled then
+        SprintingModule.StaminaLoss = 0
+        SprintingModule.StaminaGain = 9999
+    else
+        SprintingModule.StaminaLoss = defaultLoss
+        SprintingModule.StaminaGain = defaultGain
+    end
+end
+
+Main:CreateToggle({
+    Name = "Inf Stamina",
+    CurrentValue = false,
+    Callback = function(v)
+        infStaminaEnabled = v
+        applyStamina()
+    end
+})
+
+----------------------------------------------------
+-- ✅ VISUAL STAMINA (LOGIC CỦA BẠN)
+----------------------------------------------------
+local connection
+
+local function getModule()
+    local sprinting = ReplicatedStorage
+        :WaitForChild("Systems")
+        :WaitForChild("Character")
+        :WaitForChild("Game")
+        :WaitForChild("Sprinting")
+
+    return require(sprinting)
+end
+
+local function createDisplay()
+    local character = LocalPlayer.Character
+    if not character then return nil end
+
+    local head = character:WaitForChild("Head")
+
+    pcall(function()
+        head:FindFirstChild("StaminaDisplay"):Destroy()
+    end)
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "StaminaDisplay"
+    billboard.Size = UDim2.new(3, 0, 1, 0)
+    billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+    billboard.AlwaysOnTop = true
+    billboard.LightInfluence = 0
+    billboard.Enabled = visualStaminaEnabled
+    billboard.Parent = head
+
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextSize = 12 -- ✅ nhỏ
+    textLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    textLabel.TextStrokeTransparency = 0.4
+    textLabel.Text = "Stamina"
+    textLabel.Parent = billboard
+
+    return textLabel
+end
+
+local function updateDisplay(textLabel)
+    local module = getModule()
+
+    local current = math.floor(module.Stamina or 0)
+    local maxStam = module.MaxStamina or 100
+
+    textLabel.Text = "Stamina " .. current .. "/" .. maxStam
+end
+
+local function setupCharacter()
+    local textLabel = createDisplay()
+    if not textLabel then return end
+
+    if connection then connection:Disconnect() end
+
+    connection = RunService.RenderStepped:Connect(function()
+        if visualStaminaEnabled then
+            pcall(updateDisplay, textLabel)
+        end
+    end)
+end
+
+Main:CreateToggle({
+    Name = "Visual Stamina",
+    CurrentValue = false,
+    Callback = function(v)
+        visualStaminaEnabled = v
+
+        local char = LocalPlayer.Character
+        if char then
+            local head = char:FindFirstChild("Head")
+            if head and head:FindFirstChild("StaminaDisplay") then
+                head.StaminaDisplay.Enabled = v
+            end
+        end
+    end
+})
+
+applyStamina()
+
+if LocalPlayer.Character then
+    task.wait(1)
+    setupCharacter()
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(2)
+    applyStamina()
+    setupCharacter()
+end)
+
+----------------------------------------------------
+-- ✅ AUTO GENERATOR
+----------------------------------------------------
+task.spawn(function()
+    local lastFire = 0
+
+    while task.wait(0.1) do
+        if autoGenEnabled and tick() - lastFire >= autoGenCooldown then
+            pcall(function()
+                local mapFolder = Workspace:FindFirstChild("Map")
+                    and Workspace.Map:FindFirstChild("Ingame")
+                    and Workspace.Map.Ingame:FindFirstChild("Map")
+
+                if not mapFolder then return end
+
+                for _, gen in pairs(mapFolder:GetChildren()) do
+                    if gen.Name == "Generator"
+                        and gen:FindFirstChild("Remotes")
+                        and gen.Remotes:FindFirstChild("RE") then
+
+                        gen.Remotes.RE:FireServer()
+                    end
+                end
+            end)
+
+            lastFire = tick()
+        end
+    end
+end)
+
+----------------------------------------------------
+-- ✅ TEXT ESP (LOGIC CỦA BẠN)
+----------------------------------------------------
+local ESPState = {
+    Killers = false,
+    Survivors = false,
+    Generators = false,
+    Items = false
+}
+
+ESPTab:CreateSection("Text ESP")
+
+ESPTab:CreateToggle({ Name = "Killers ESP", Callback = function(v) ESPState.Killers = v end })
+ESPTab:CreateToggle({ Name = "Survivors ESP", Callback = function(v) ESPState.Survivors = v end })
+ESPTab:CreateToggle({ Name = "Generators ESP", Callback = function(v) ESPState.Generators = v end })
+ESPTab:CreateToggle({ Name = "Items ESP", Callback = function(v) ESPState.Items = v end })
+
+local killersFolder = Workspace:WaitForChild("Players"):WaitForChild("Killers")
+local survivorsFolder = Workspace:WaitForChild("Players"):WaitForChild("Survivors")
+local itemsFolder = Workspace:FindFirstChild("Items")
+
+local function getMapFolder()
+    local map = Workspace:FindFirstChild("Map")
+    if map and map:FindFirstChild("Ingame") then
+        return map.Ingame:FindFirstChild("Map")
+    end
+end
+
+local function createESP(obj, color)
+    if obj:FindFirstChild("ESP_Tag") then return end
+
+    local adornee = obj:FindFirstChild("Head")
+        or obj:FindFirstChild("HumanoidRootPart")
+        or obj:FindFirstChildWhichIsA("BasePart")
+
+    if not adornee then return end
+
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "ESP_Tag"
+    bb.Adornee = adornee
+    bb.Size = UDim2.new(0, 90, 0, 18)
+    bb.StudsOffset = Vector3.new(0, 2, 0)
+    bb.AlwaysOnTop = true
+    bb.Enabled = false
+    bb.Parent = obj
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.fromScale(1, 1)
+    label.BackgroundTransparency = 1
+    label.TextSize = 9
+    label.Font = Enum.Font.GothamBold
+    label.TextStrokeTransparency = 0.5
+    label.TextColor3 = color
+    label.Text = obj.Name
+    label.Parent = bb
+end
+
+task.spawn(function()
+    while task.wait(1.5) do
+
+        if ESPState.Killers then
+            for _, k in pairs(killersFolder:GetChildren()) do
+                if k:IsA("Model") then
+                    createESP(k, Color3.fromRGB(255, 0, 0))
+                end
+            end
+        end
+
+        if ESPState.Survivors then
+            for _, s in pairs(survivorsFolder:GetChildren()) do
+                if s:IsA("Model") then
+                    createESP(s, Color3.fromRGB(0, 170, 255))
+                end
+            end
+        end
+
+        if ESPState.Generators then
+            local mapFolder = getMapFolder()
+            if mapFolder then
+                for _, gen in pairs(mapFolder:GetChildren()) do
+                    if gen.Name == "Generator" then
+                        createESP(gen, Color3.fromRGB(170, 0, 255))
+                    end
+                end
+            end
+        end
+
+        if ESPState.Items and itemsFolder then
+            for _, item in pairs(itemsFolder:GetChildren()) do
+                createESP(item, Color3.fromRGB(0, 170, 255))
+            end
+        end
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+
+    for _, obj in pairs(killersFolder:GetChildren()) do
+        local bb = obj:FindFirstChild("ESP_Tag")
+        if bb then bb.Enabled = ESPState.Killers end
+    end
+
+    for _, obj in pairs(survivorsFolder:GetChildren()) do
+        local bb = obj:FindFirstChild("ESP_Tag")
+        if bb then bb.Enabled = ESPState.Survivors end
+    end
+
+    local mapFolder = getMapFolder()
+    if mapFolder then
+        for _, gen in pairs(mapFolder:GetChildren()) do
+            local bb = gen:FindFirstChild("ESP_Tag")
+            if bb then bb.Enabled = ESPState.Generators end
+        end
+    end
+
+    if itemsFolder then
+        for _, item in pairs(itemsFolder:GetChildren()) do
+            local bb = item:FindFirstChild("ESP_Tag")
+            if bb then bb.Enabled = ESPState.Items end
+        end
+    end
+
+end)
+
+----------------------------------------------------
+-- ✅ PIZZA AIM – BIẾN GỐC (GIỮ NGUYÊN)
+----------------------------------------------------
+getgenv().PizzaAimEnabled = false
+getgenv().PizzaAimDistance = 100
+getgenv().TargetMode = false
+getgenv().SelectedTarget = nil
+
+----------------------------------------------------
+-- ✅ COMBAT UI
+----------------------------------------------------
+Combat:CreateSection("Pizza Aimbot")
+
+Combat:CreateToggle({
+    Name = "Enable Pizza Aim",
+    CurrentValue = false,
+    Callback = function(v)
+        getgenv().PizzaAimEnabled = v
+    end
+})
+
+Combat:CreateInput({
+    Name = "Aim Distance",
+    PlaceholderText = "Enter distance...",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text)
+        local n = tonumber(text)
+        if n then
+            getgenv().PizzaAimDistance = n
+        end
+    end
+})
+
+Combat:CreateToggle({
+    Name = "Manual Target",
+    CurrentValue = false,
+    Callback = function(v)
+        getgenv().TargetMode = v
+        getgenv().SelectedTarget = nil
+    end
+})
+
+local targetList = {}
+local dropdown
+
+local function refreshTargets()
+    targetList = {}
+
+    local survivorsFolder = Workspace:WaitForChild("Players"):WaitForChild("Survivors")
+
+    for _, model in ipairs(survivorsFolder:GetChildren()) do
+        if model:IsA("Model") then
+            table.insert(targetList, model.Name)
+        end
+    end
+
+    if dropdown then
+        dropdown:Refresh(targetList)
+    end
+end
+
+dropdown = Combat:CreateDropdown({
+    Name = "Select Target",
+    Options = targetList,
+    CurrentOption = nil,
+    Callback = function(option)
+        if not option then return end
+
+        local survivorsFolder = Workspace:WaitForChild("Players"):WaitForChild("Survivors")
+        getgenv().SelectedTarget = survivorsFolder:FindFirstChild(option)
+    end
+})
+
+Combat:CreateButton({
+    Name = "Refresh Target List",
+    Callback = refreshTargets
+})
+
+refreshTargets()
+
+----------------------------------------------------
+-- ✅ LOGIC AIM (GIỮ NGUYÊN + thêm Manual Mode)
+----------------------------------------------------
+local PizzaAnimation = {
+    ["114155003741146"] = true,
+    ["12662553001"] = true,
+    ["104033348426533"] = true
+}
+
+local function getHumanoid()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChildWhichIsA("Humanoid")
+end
+
+local function isLocalPlayerPlayingAnimation()
+    local hum = getHumanoid()
+    local animator = hum and hum:FindFirstChildOfClass("Animator")
+    if not animator then return false end
+
+    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+        local id = track.Animation and track.Animation.AnimationId
+        id = id and id:match("%d+")
+
+        if id and PizzaAnimation[id] then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function getWeakestSurvivor()
+    local folder = Workspace:WaitForChild("Players"):WaitForChild("Survivors")
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return nil end
+
+    local weakest, lowest = nil, math.huge
+
+    for _, m in ipairs(folder:GetChildren()) do
+        if m:IsA("Model") and m ~= myChar then
+            local h = m:FindFirstChildWhichIsA("Humanoid")
+            local r = m:FindFirstChild("HumanoidRootPart")
+
+            if h and r and h.Health > 0 then
+                local d = (r.Position - myRoot.Position).Magnitude
+                if d <= getgenv().PizzaAimDistance and h.Health < lowest then
+                    lowest = h.Health
+                    weakest = m
+                end
+            end
+        end
+    end
+
+    return weakest
+end
+
+local currentTarget, wasPlaying, autoRotateOff = nil, false, false
+
+RunService.RenderStepped:Connect(function()
+
+    if not getgenv().PizzaAimEnabled then
+        currentTarget, wasPlaying = nil, false
+
+        if autoRotateOff then
+            local h = getHumanoid()
+            if h then h.AutoRotate = true end
+            autoRotateOff = false
+        end
+        return
+    end
+
+    local hum = getHumanoid()
+    local root = hum and hum.Parent:FindFirstChild("HumanoidRootPart")
+    if not hum or not root then return end
+
+    local playing = isLocalPlayerPlayingAnimation()
+
+    if playing and not currentTarget then
+        if getgenv().TargetMode and getgenv().SelectedTarget then
+            currentTarget = getgenv().SelectedTarget
+        else
+            currentTarget = getWeakestSurvivor()
+        end
+    end
+
+    if not playing and wasPlaying then
+        currentTarget = nil
+        hum.AutoRotate = true
+        autoRotateOff = false
+    end
+
+    wasPlaying = playing
+
+    if playing and currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
+        local hrp = currentTarget.HumanoidRootPart
+        hum.AutoRotate = false
+        autoRotateOff = true
+
+        local look = Vector3.new(hrp.Position.X, root.Position.Y, hrp.Position.Z)
+        root.CFrame = root.CFrame:Lerp(CFrame.lookAt(root.Position, look), 0.95)
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    currentTarget = nil
+    wasPlaying = false
+end)
