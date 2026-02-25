@@ -347,7 +347,7 @@ end)
 getgenv().PizzaAimEnabled = false
 getgenv().PizzaAimDistance = 100
 getgenv().TargetMode = false
-getgenv().SelectedTarget = nil
+getgenv().SelectedTarget = nil -- Player
 
 ----------------------------------------------------
 -- ✅ COMBAT UI
@@ -380,59 +380,29 @@ Combat:CreateToggle({
     Callback = function(v)
         getgenv().TargetMode = v
         getgenv().SelectedTarget = nil
-        currentTarget = nil -- 🔥 reset khi đổi mode
+        currentTarget = nil
     end
 })
 
 ----------------------------------------------------
--- ✅ TARGET LIST (AUTO RESET)
+-- ✅ TARGET LIST (PLAYER, EXCLUDE SELF)
 ----------------------------------------------------
 local dropdown
 local currentOptions = {}
 
-local function getAllMatchPlayers()
-    local result = {}
-    local playersFolder = Workspace:FindFirstChild("Players")
-    if not playersFolder then return result end
-
-    local function scan(folder)
-        if not folder then return end
-        for _, model in ipairs(folder:GetChildren()) do
-            if model:IsA("Model") then
-                local hum = model:FindFirstChildWhichIsA("Humanoid")
-                if hum then
-                    table.insert(result, model.Name)
-                end
-            end
-        end
-    end
-
-    scan(playersFolder:FindFirstChild("Survivors"))
-    scan(playersFolder:FindFirstChild("Killers"))
-
-    return result
-end
-
 local function refreshTargets()
-    local newList = getAllMatchPlayers()
+    local newList = {}
 
-    local changed = false
-    if #newList ~= #currentOptions then
-        changed = true
-    else
-        for i,v in ipairs(newList) do
-            if currentOptions[i] ~= v then
-                changed = true
-                break
-            end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            table.insert(newList, plr.Name)
         end
     end
 
-    if changed then
-        currentOptions = newList
-        if dropdown then
-            dropdown:Refresh(currentOptions)
-        end
+    currentOptions = newList
+
+    if dropdown then
+        dropdown:Refresh(currentOptions)
     end
 end
 
@@ -443,20 +413,13 @@ dropdown = Combat:CreateDropdown({
     Callback = function(option)
         if not option then return end
 
-        local playersFolder = Workspace:FindFirstChild("Players")
-        if not playersFolder then return end
-
-        local target =
-            (playersFolder:FindFirstChild("Survivors") and playersFolder.Survivors:FindFirstChild(option))
-            or
-            (playersFolder:FindFirstChild("Killers") and playersFolder.Killers:FindFirstChild(option))
-
-        getgenv().SelectedTarget = target
+        local plr = Players:FindFirstChild(option)
+        getgenv().SelectedTarget = plr
     end
 })
 
 Combat:CreateButton({
-    Name = "Manual Refresh",
+    Name = "Targerts",
     Callback = refreshTargets
 })
 
@@ -467,13 +430,8 @@ task.spawn(function()
     end
 end)
 
-Workspace.ChildAdded:Connect(function()
-    task.delay(1, refreshTargets)
-end)
-
-Workspace.ChildRemoved:Connect(function()
-    task.delay(1, refreshTargets)
-end)
+Players.PlayerAdded:Connect(refreshTargets)
+Players.PlayerRemoving:Connect(refreshTargets)
 
 refreshTargets()
 
@@ -560,21 +518,20 @@ RunService.RenderStepped:Connect(function()
     if playing then
 
         if getgenv().TargetMode then
-            local sel = getgenv().SelectedTarget
+            local selPlr = getgenv().SelectedTarget
+            local selChar = selPlr and selPlr.Character
 
-            if sel
-            and sel.Parent
-            and sel:FindFirstChild("HumanoidRootPart")
-            and sel:FindFirstChildWhichIsA("Humanoid")
-            and sel:FindFirstChildWhichIsA("Humanoid").Health > 0 then
+            if selChar
+            and selChar:FindFirstChild("HumanoidRootPart")
+            and selChar:FindFirstChildWhichIsA("Humanoid")
+            and selChar:FindFirstChildWhichIsA("Humanoid").Health > 0 then
 
-                currentTarget = sel
+                currentTarget = selChar
             else
                 currentTarget = nil
             end
 
         else
-            -- 🔥 LOGIC CŨ
             if not currentTarget then
                 currentTarget = getWeakestSurvivor()
             end
