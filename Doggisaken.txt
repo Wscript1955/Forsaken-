@@ -1829,6 +1829,15 @@ local staminaLoss = 10
 local sprintSpeed = 26
 local staminaLossDisabled = false
 
+local DEFAULT = {
+    MaxStamina = 100,
+    MinStamina = 0,
+    StaminaGain = 20,
+    StaminaLoss = 10,
+    SprintSpeed = 26,
+    StaminaLossDisabled = false
+}
+
 Main:CreateSection("Stamina Settings")
 
 Main:CreateToggle({
@@ -1845,7 +1854,6 @@ Main:CreateInput({
    PlaceholderText = "e.g. 100",
    CurrentValue = tostring(maxStamina),
    RemoveTextAfterFocusLost = false,
-   Flag = "Main_MaxStaminaInput",
    Callback = function(Text)
       maxStamina = tonumber(Text) or maxStamina
    end,
@@ -1856,7 +1864,6 @@ Main:CreateInput({
    PlaceholderText = "e.g. 0",
    CurrentValue = tostring(minStamina),
    RemoveTextAfterFocusLost = false,
-   Flag = "Main_MinStaminaInput",
    Callback = function(Text)
       minStamina = tonumber(Text) or minStamina
    end,
@@ -1867,7 +1874,6 @@ Main:CreateInput({
    PlaceholderText = "e.g. 20",
    CurrentValue = tostring(staminaGain),
    RemoveTextAfterFocusLost = false,
-   Flag = "Main_StaminaGainInput",
    Callback = function(Text)
       staminaGain = tonumber(Text) or staminaGain
    end,
@@ -1878,7 +1884,6 @@ Main:CreateInput({
    PlaceholderText = "e.g. 10",
    CurrentValue = tostring(staminaLoss),
    RemoveTextAfterFocusLost = false,
-   Flag = "Main_StaminaLossInput",
    Callback = function(Text)
       staminaLoss = tonumber(Text) or staminaLoss
    end,
@@ -1889,7 +1894,6 @@ Main:CreateInput({
    PlaceholderText = "e.g. 26",
    CurrentValue = tostring(sprintSpeed),
    RemoveTextAfterFocusLost = false,
-   Flag = "Main_SprintSpeedInput",
    Callback = function(Text)
       sprintSpeed = tonumber(Text) or sprintSpeed
    end,
@@ -1898,32 +1902,51 @@ Main:CreateInput({
 Main:CreateToggle({
    Name = "Disable Stamina Loss",
    CurrentValue = false,
-   Flag = "Main_ToggleStaminaLossDisabled",
    Callback = function(Value)
       staminaLossDisabled = Value
    end,
 })
 
--- ✅ RESET BUTTON
+-- =========================
+-- Reset Button
+-- =========================
+
 Main:CreateButton({
-   Name = "Reset Stamina",
-   Callback = function()
-
-      maxStamina = 100
-      minStamina = 0
-      staminaGain = 20
-      staminaLoss = 10
-      sprintSpeed = 26
-      staminaLossDisabled = false
-
-   end,
+    Name = "Reset Stamina",
+    Callback = function()
+        staminaLoopToggle = false
+        maxStamina = DEFAULT.MaxStamina
+        minStamina = DEFAULT.MinStamina
+        staminaGain = DEFAULT.StaminaGain
+        staminaLoss = DEFAULT.StaminaLoss
+        sprintSpeed = DEFAULT.SprintSpeed
+        staminaLossDisabled = DEFAULT.StaminaLossDisabled
+    end
 })
 
 -- =========================
--- Apply Logic (giữ nguyên)
+-- Inject Default (ép về gốc ngay cả khi killer override)
+-- =========================
+
+Main:CreateButton({
+    Name = "Inject Default",
+    Callback = function()
+        staminaLoopToggle = true
+        maxStamina = DEFAULT.MaxStamina
+        minStamina = DEFAULT.MinStamina
+        staminaGain = DEFAULT.StaminaGain
+        staminaLoss = DEFAULT.StaminaLoss
+        sprintSpeed = DEFAULT.SprintSpeed
+        staminaLossDisabled = DEFAULT.StaminaLossDisabled
+    end
+})
+
+-- =========================
+-- Apply Logic
 -- =========================
 
 task.spawn(function()
+
    local Sprinting = game:GetService("ReplicatedStorage")
       :WaitForChild("Systems")
       :WaitForChild("Character")
@@ -1932,15 +1955,8 @@ task.spawn(function()
 
    local stamina = require(Sprinting)
 
-   local defaultValues = {
-      MaxStamina = 100,
-      MinStamina = 0,
-      StaminaGain = 20,
-      StaminaLoss = 10,
-      SprintSpeed = 26,
-   }
-
    while task.wait() do
+
       if staminaLoopToggle then
          stamina.MaxStamina = maxStamina
          stamina.MinStamina = minStamina
@@ -1949,34 +1965,13 @@ task.spawn(function()
          stamina.SprintSpeed = sprintSpeed
          stamina.StaminaLossDisabled = staminaLossDisabled
       else
-         stamina.MaxStamina = defaultValues.MaxStamina
-         stamina.MinStamina = defaultValues.MinStamina
-         stamina.StaminaGain = defaultValues.StaminaGain
-         stamina.StaminaLoss = defaultValues.StaminaLoss
-         stamina.SprintSpeed = defaultValues.SprintSpeed
-         stamina.StaminaLossDisabled = false
+         stamina.MaxStamina = DEFAULT.MaxStamina
+         stamina.MinStamina = DEFAULT.MinStamina
+         stamina.StaminaGain = DEFAULT.StaminaGain
+         stamina.StaminaLoss = DEFAULT.StaminaLoss
+         stamina.SprintSpeed = DEFAULT.SprintSpeed
+         stamina.StaminaLossDisabled = DEFAULT.StaminaLossDisabled
       end
+
    end
 end)
-
-Main:CreateButton({
-   Name = "Reset Stamina",
-   Callback = function()
-
-      staminaLoopToggle = false
-      staminaLossDisabled = false
-
-      maxStamina = defaultValues.MaxStamina
-      minStamina = defaultValues.MinStamina
-      staminaGain = defaultValues.StaminaGain
-      staminaLoss = defaultValues.StaminaLoss
-      sprintSpeed = defaultValues.SprintSpeed
-
-      stamina.MaxStamina = defaultValues.MaxStamina
-      stamina.MinStamina = defaultValues.MinStamina
-      stamina.StaminaGain = defaultValues.StaminaGain
-      stamina.StaminaLoss = defaultValues.StaminaLoss
-      stamina.SprintSpeed = defaultValues.SprintSpeed
-      stamina.StaminaLossDisabled = defaultValues.StaminaLossDisabled
-   end,
-})
