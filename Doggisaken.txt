@@ -1821,6 +1821,11 @@ Support:CreateButton({
 -- Stamina Settings (Main)
 -- =========================
 
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LP = Players.LocalPlayer
+
 local staminaLoopToggle = false
 local maxStamina = 100
 local minStamina = 0
@@ -1843,55 +1848,13 @@ Main:CreateSection("Stamina Settings")
 Main:CreateToggle({
    Name = "Inject Stamina",
    CurrentValue = false,
-   Flag = "Main_StaminaLoopToggle",
    Callback = function(Value)
       staminaLoopToggle = Value
    end,
 })
 
 Main:CreateInput({
-   Name = "Max Stamina",
-   PlaceholderText = "e.g. 100",
-   CurrentValue = tostring(maxStamina),
-   RemoveTextAfterFocusLost = false,
-   Callback = function(Text)
-      maxStamina = tonumber(Text) or maxStamina
-   end,
-})
-
-Main:CreateInput({
-   Name = "Min Stamina",
-   PlaceholderText = "e.g. 0",
-   CurrentValue = tostring(minStamina),
-   RemoveTextAfterFocusLost = false,
-   Callback = function(Text)
-      minStamina = tonumber(Text) or minStamina
-   end,
-})
-
-Main:CreateInput({
-   Name = "Stamina Gain",
-   PlaceholderText = "e.g. 20",
-   CurrentValue = tostring(staminaGain),
-   RemoveTextAfterFocusLost = false,
-   Callback = function(Text)
-      staminaGain = tonumber(Text) or staminaGain
-   end,
-})
-
-Main:CreateInput({
-   Name = "Stamina Loss",
-   PlaceholderText = "e.g. 10",
-   CurrentValue = tostring(staminaLoss),
-   RemoveTextAfterFocusLost = false,
-   Callback = function(Text)
-      staminaLoss = tonumber(Text) or staminaLoss
-   end,
-})
-
-Main:CreateInput({
    Name = "Sprint Speed",
-   PlaceholderText = "e.g. 26",
    CurrentValue = tostring(sprintSpeed),
    RemoveTextAfterFocusLost = false,
    Callback = function(Text)
@@ -1907,10 +1870,7 @@ Main:CreateToggle({
    end,
 })
 
--- =========================
--- Reset Button
--- =========================
-
+-- ✅ RESET FIX
 Main:CreateButton({
     Name = "Reset Stamina",
     Callback = function()
@@ -1925,53 +1885,51 @@ Main:CreateButton({
 })
 
 -- =========================
--- Inject Default (ép về gốc ngay cả khi killer override)
--- =========================
-
-Main:CreateButton({
-    Name = "Inject Default",
-    Callback = function()
-        staminaLoopToggle = true
-        maxStamina = DEFAULT.MaxStamina
-        minStamina = DEFAULT.MinStamina
-        staminaGain = DEFAULT.StaminaGain
-        staminaLoss = DEFAULT.StaminaLoss
-        sprintSpeed = DEFAULT.SprintSpeed
-        staminaLossDisabled = DEFAULT.StaminaLossDisabled
-    end
-})
-
--- =========================
--- Apply Logic
+-- Apply Logic (FIXED)
 -- =========================
 
 task.spawn(function()
 
-   local Sprinting = game:GetService("ReplicatedStorage")
-      :WaitForChild("Systems")
-      :WaitForChild("Character")
-      :WaitForChild("Game")
-      :WaitForChild("Sprinting")
+    local SprintingModule = ReplicatedStorage
+        :WaitForChild("Systems")
+        :WaitForChild("Character")
+        :WaitForChild("Game")
+        :WaitForChild("Sprinting")
 
-   local stamina = require(Sprinting)
+    local stamina = require(SprintingModule)
 
-   while task.wait() do
+    while task.wait(0.1) do
 
-      if staminaLoopToggle then
-         stamina.MaxStamina = maxStamina
-         stamina.MinStamina = minStamina
-         stamina.StaminaGain = staminaGain
-         stamina.StaminaLoss = staminaLoss
-         stamina.SprintSpeed = sprintSpeed
-         stamina.StaminaLossDisabled = staminaLossDisabled
-      else
-         stamina.MaxStamina = DEFAULT.MaxStamina
-         stamina.MinStamina = DEFAULT.MinStamina
-         stamina.StaminaGain = DEFAULT.StaminaGain
-         stamina.StaminaLoss = DEFAULT.StaminaLoss
-         stamina.SprintSpeed = DEFAULT.SprintSpeed
-         stamina.StaminaLossDisabled = DEFAULT.StaminaLossDisabled
-      end
+        local char = LP.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-   end
+        if staminaLoopToggle then
+
+            stamina.MaxStamina = maxStamina
+            stamina.MinStamina = minStamina
+            stamina.StaminaGain = staminaGain
+            stamina.StaminaLoss = staminaLoss
+            stamina.SprintSpeed = sprintSpeed
+            stamina.StaminaLossDisabled = staminaLossDisabled
+
+            -- ✅ FORCE SPEED APPLY
+            if hum then
+                hum.WalkSpeed = sprintSpeed
+            end
+
+        else
+
+            stamina.MaxStamina = DEFAULT.MaxStamina
+            stamina.MinStamina = DEFAULT.MinStamina
+            stamina.StaminaGain = DEFAULT.StaminaGain
+            stamina.StaminaLoss = DEFAULT.StaminaLoss
+            stamina.SprintSpeed = DEFAULT.SprintSpeed
+            stamina.StaminaLossDisabled = DEFAULT.StaminaLossDisabled
+
+            if hum then
+                hum.WalkSpeed = DEFAULT.SprintSpeed
+            end
+        end
+    end
 end)
+
