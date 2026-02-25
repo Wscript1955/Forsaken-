@@ -342,8 +342,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 ----------------------------------------------------
-----------------------------------------------------
--- ✅ PIZZA AIM VARIABLES
+-- ✅ VARIABLES
 ----------------------------------------------------
 getgenv().PizzaAimEnabled = false
 getgenv().PizzaAimDistance = 100
@@ -381,46 +380,100 @@ Combat:CreateToggle({
     Callback = function(v)
         getgenv().TargetMode = v
         getgenv().SelectedTarget = nil
+        currentTarget = nil -- 🔥 reset khi đổi mode
     end
 })
 
-local targetList = {}
+----------------------------------------------------
+-- ✅ TARGET LIST (AUTO RESET)
+----------------------------------------------------
 local dropdown
+local currentOptions = {}
 
-local function refreshTargets()
-    targetList = {}
+local function getAllMatchPlayers()
+    local result = {}
+    local playersFolder = Workspace:FindFirstChild("Players")
+    if not playersFolder then return result end
 
-    local survivorsFolder = Workspace:WaitForChild("Players"):WaitForChild("Survivors")
-
-    for _, model in ipairs(survivorsFolder:GetChildren()) do
-        if model:IsA("Model") then
-            table.insert(targetList, model.Name)
+    local function scan(folder)
+        if not folder then return end
+        for _, model in ipairs(folder:GetChildren()) do
+            if model:IsA("Model") then
+                local hum = model:FindFirstChildWhichIsA("Humanoid")
+                if hum then
+                    table.insert(result, model.Name)
+                end
+            end
         end
     end
 
-    if dropdown then
-        dropdown:Refresh(targetList)
+    scan(playersFolder:FindFirstChild("Survivors"))
+    scan(playersFolder:FindFirstChild("Killers"))
+
+    return result
+end
+
+local function refreshTargets()
+    local newList = getAllMatchPlayers()
+
+    local changed = false
+    if #newList ~= #currentOptions then
+        changed = true
+    else
+        for i,v in ipairs(newList) do
+            if currentOptions[i] ~= v then
+                changed = true
+                break
+            end
+        end
+    end
+
+    if changed then
+        currentOptions = newList
+        if dropdown then
+            dropdown:Refresh(currentOptions)
+        end
     end
 end
 
 dropdown = Combat:CreateDropdown({
     Name = "Select Target",
-    Options = targetList,
+    Options = currentOptions,
     CurrentOption = nil,
     Callback = function(option)
         if not option then return end
 
-        local survivorsFolder = Workspace:WaitForChild("Players"):WaitForChild("Survivors")
-        local target = survivorsFolder:FindFirstChild(option)
+        local playersFolder = Workspace:FindFirstChild("Players")
+        if not playersFolder then return end
+
+        local target =
+            (playersFolder:FindFirstChild("Survivors") and playersFolder.Survivors:FindFirstChild(option))
+            or
+            (playersFolder:FindFirstChild("Killers") and playersFolder.Killers:FindFirstChild(option))
 
         getgenv().SelectedTarget = target
     end
 })
 
 Combat:CreateButton({
-    Name = "Refresh Target List",
+    Name = "Manual Refresh",
     Callback = refreshTargets
 })
+
+-- 🔥 AUTO REFRESH
+task.spawn(function()
+    while task.wait(2) do
+        refreshTargets()
+    end
+end)
+
+Workspace.ChildAdded:Connect(function()
+    task.delay(1, refreshTargets)
+end)
+
+Workspace.ChildRemoved:Connect(function()
+    task.delay(1, refreshTargets)
+end)
 
 refreshTargets()
 
@@ -446,7 +499,6 @@ local function isLocalPlayerPlayingAnimation()
     for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
         local id = track.Animation and track.Animation.AnimationId
         id = id and id:match("%d+")
-
         if id and PizzaAnimation[id] then
             return true
         end
@@ -503,7 +555,7 @@ RunService.RenderStepped:Connect(function()
     local playing = isLocalPlayerPlayingAnimation()
 
     ------------------------------------------------
-    -- ✅ TARGET SELECTION FIX
+    -- ✅ TARGET SWITCH LOGIC
     ------------------------------------------------
     if playing then
 
@@ -522,6 +574,7 @@ RunService.RenderStepped:Connect(function()
             end
 
         else
+            -- 🔥 LOGIC CŨ
             if not currentTarget then
                 currentTarget = getWeakestSurvivor()
             end
@@ -529,7 +582,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     ------------------------------------------------
-    -- ✅ RESET WHEN ANIMATION STOPS
+    -- ✅ RESET WHEN STOP PLAYING
     ------------------------------------------------
     if not playing and wasPlaying then
         currentTarget = nil
@@ -554,7 +607,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 ----------------------------------------------------
--- ✅ CHARACTER RESET FIX
+-- ✅ CHARACTER RESET
 ----------------------------------------------------
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
