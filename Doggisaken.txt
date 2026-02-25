@@ -364,7 +364,7 @@ getgenv().SelectedTarget = nil
 Combat:CreateSection("Pizza Aimbot")
 
 Combat:CreateToggle({
-    Name = "Enable Pizza Aim",
+    Name = "Pizza Aim",
     CurrentValue = false,
     Callback = function(v)
         getgenv().PizzaAimEnabled = v
@@ -572,3 +572,114 @@ LocalPlayer.CharacterAdded:Connect(function()
     currentTarget = nil
     wasPlaying = false
 end)
+
+----------------------------------------------------
+-- ✅ AUTO SLASH (NO NOTIFICATION)
+----------------------------------------------------
+Combat:CreateSection("Auto Slash")
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LP = Players.LocalPlayer
+
+local Remote = ReplicatedStorage
+    :WaitForChild("Modules")
+    :WaitForChild("Network")
+    :WaitForChild("RemoteEvent")
+
+local autoSlash = false
+local autoAim = false
+local rage = 12
+
+local slashCooldown = 30
+local lastSlash = 1
+
+local aimTargets = {
+    "Slasher","c00lkidd","JohnDoe","1x1x1x1",
+    "Noli","Guest 666","Sixer","Nosferatu"
+}
+
+local humanoid, hrp
+
+local function setupChar(char)
+    humanoid = char:WaitForChild("Humanoid")
+    hrp = char:WaitForChild("HumanoidRootPart")
+end
+
+if LP.Character then setupChar(LP.Character) end
+LP.CharacterAdded:Connect(setupChar)
+
+local function getTarget()
+    if not hrp then return end
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local c = plr.Character
+            local h = c:FindFirstChild("HumanoidRootPart")
+            if h and (h.Position - hrp.Position).Magnitude <= rage then
+                for _,n in ipairs(aimTargets) do
+                    if c.Name:lower():find(n:lower()) then
+                        return h
+                    end
+                end
+            end
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    if not humanoid or not hrp then return end
+
+    local target = getTarget()
+    if not target then return end
+
+    local now = tick()
+    local slashReady = (now - lastSlash) >= slashCooldown
+
+    if autoAim and slashReady then
+        local dir = (target.Position - hrp.Position).Unit
+        local yaw = math.atan2(-dir.X, -dir.Z)
+        hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0,yaw,0)
+    end
+
+    if autoSlash and slashReady then
+        lastSlash = now
+
+        pcall(function()
+            Remote:FireServer(
+                "UseActorAbility",
+                { buffer.fromstring("\3\5\0\0\0Slash") }
+            )
+        end)
+    end
+end)
+
+----------------------------------------------------
+-- ✅ UI
+----------------------------------------------------
+Combat:CreateToggle({
+    Name = "Auto Slash",
+    CurrentValue = false,
+    Callback = function(v)
+        autoSlash = v
+    end
+})
+
+Combat:CreateToggle({
+    Name = "Auto Aim",
+    CurrentValue = false,
+    Callback = function(v)
+        autoAim = v
+    end
+})
+
+Combat:CreateInput({
+    Name = "Rage Distance",
+    PlaceholderText = "12",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(t)
+        local n = tonumber(t)
+        if n then rage = n end
+    end
+})
