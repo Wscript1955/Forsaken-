@@ -1817,61 +1817,33 @@ Support:CreateButton({
     end
 })
 
--- ===== 1x1x1x1 Aim =====
-Main:CreateSection("1X1X1X1 Aim")
-local toggleOn = false
-local predictMovement = false
+-- =========================
+-- Variables
+-- =========================
+local aimEnabled = false
 local aimMode = "One Player"
+local predictMovement = false
 
-local toggleFlag = Instance.new("BoolValue")
-toggleFlag.Name = "1x1x1x1AutoAim_ToggleFlag"
-toggleFlag.Value = false
-
-CombatTab:CreateToggle({
-    Name = "Aim",
-    CurrentValue = toggleOn,
-    Flag = "AimSkill1x1x1x1",
-    Callback = function(state)
-        toggleOn = state
-        toggleFlag.Value = state
-    end,
-})
-
-CombatTab:CreateDropdown({
-    Name = "Mode",
-    Options = {"One Player", "Multi Players"},
-    CurrentOption = aimMode,
-    Flag = "AimModeDropdown",
-    Callback = function(value)
-        aimMode = value
-    end,
-})
-
-CombatTab:CreateToggle({
-    Name = "Predict Movement",
-    CurrentValue = predictMovement,
-    Flag = "PredictMovementToggle",
-    Callback = function(state)
-        predictMovement = state
-    end,
-})
-
--- ===== Services =====
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local localPlayer = Players.LocalPlayer
-local workspacePlayers = workspace:WaitForChild("Players")
-local survivorsFolder = workspacePlayers:WaitForChild("Survivors")
+local LocalPlayer = Players.LocalPlayer
+local SurvivorsFolder = workspace:WaitForChild("Players"):WaitForChild("Survivors")
 
--- ===== Animation IDs =====
+local killerModels = {
+    ["1x1x1x1"] = true
+}
+
+-- =========================
+-- Animation Check IDs
+-- =========================
 local dangerousAnimations = {
 
     -- Base
-    ["119181003138006"] = true,
-    ["99050723653468"]  = true,
+    ["119181003138006"] = true, -- Entanglement
+    ["99050723653468"]  = true, -- MassInfection
 
-    -- Timeless / Lancer / Ace / Fleskhjerta / Toy
+    -- Timeless / Lancer / AceOfSpades / Fleskhjerta / Toy
     ["100592913030351"] = true,
     ["81935774508746"]  = true,
 
@@ -1883,7 +1855,7 @@ local dangerousAnimations = {
     ["83685305553364"]  = true,
     ["99030950661794"]  = true,
 
-    -- Special / Milestone
+    -- Special / Milestone skins
     ["101101433684051"] = true,
     ["116787687605496"] = true,
 
@@ -1899,68 +1871,57 @@ local dangerousAnimations = {
     ["112598064360414"] = true,
 }
 
-local killerModels = {["1x1x1x1"] = true}
-
--- ===== Variables =====
-local autoRotateDisabledByScript = false
-local currentTarget, isLockedOn, wasPlayingAnimation = nil, false, false
-
--- ===== Functions =====
-local function isKiller()
-    local char = localPlayer.Character
-    return char and killerModels[char.Name] or false
-end
-
-local function getMyHumanoid()
-    local char = localPlayer.Character
+-- =========================
+-- Helper Functions
+-- =========================
+local function getHumanoid()
+    local char = LocalPlayer.Character
     return char and char:FindFirstChildWhichIsA("Humanoid")
 end
 
-local function restoreAutoRotate()
-    local hum = getMyHumanoid()
-    if hum and autoRotateDisabledByScript then
-        hum.AutoRotate = true
-        autoRotateDisabledByScript = false
-    end
+local function getRoot()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function isKiller()
+    local char = LocalPlayer.Character
+    return char and killerModels[char.Name] or false
 end
 
 local function isPlayingDangerousAnimation()
-    local humanoid = getMyHumanoid()
+    local humanoid = getHumanoid()
     if not humanoid then return false end
 
     local animator = humanoid:FindFirstChildOfClass("Animator")
     if not animator then return false end
 
     for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-        if track.Animation then
-            local animId = tostring(track.Animation.AnimationId):match("%d+")
-            if animId and dangerousAnimations[animId] then
-                return true
-            end
+        local animId = tostring(track.Animation.AnimationId):match("%d+")
+        if animId and dangerousAnimations[animId] then
+            return true
         end
     end
+
     return false
 end
 
 local function getClosestSurvivor()
-    local myHumanoid = getMyHumanoid()
-    if not myHumanoid then return nil end
-
-    local myRoot = myHumanoid.Parent:FindFirstChild("HumanoidRootPart")
+    local myRoot = getRoot()
     if not myRoot then return nil end
 
-    local closest, closestDist = nil, math.huge
+    local closest, dist = nil, math.huge
 
-    for _, obj in ipairs(survivorsFolder:GetChildren()) do
-        if obj:IsA("Model") then
-            local hrp = obj:FindFirstChild("HumanoidRootPart")
-            local hum = obj:FindFirstChildWhichIsA("Humanoid")
+    for _, model in ipairs(SurvivorsFolder:GetChildren()) do
+        if model:IsA("Model") then
+            local hrp = model:FindFirstChild("HumanoidRootPart")
+            local hum = model:FindFirstChildWhichIsA("Humanoid")
 
             if hrp and hum and hum.Health > 0 then
-                local dist = (hrp.Position - myRoot.Position).Magnitude
-                if dist < closestDist then
-                    closest = obj
-                    closestDist = dist
+                local mag = (hrp.Position - myRoot.Position).Magnitude
+                if mag < dist then
+                    closest = model
+                    dist = mag
                 end
             end
         end
@@ -1969,69 +1930,61 @@ local function getClosestSurvivor()
     return closest
 end
 
--- ===== Character Reset =====
-localPlayer.CharacterAdded:Connect(function()
-    task.delay(0.1, function()
-        autoRotateDisabledByScript = false
-    end)
-end)
+-- =========================
+-- Aim Logic
+-- =========================
+local autoRotateDisabled = false
+local currentTarget = nil
+local wasPlaying = false
 
--- ===== Main Loop =====
 RunService.RenderStepped:Connect(function()
-
-    if not toggleFlag.Value then
-        restoreAutoRotate()
-        currentTarget, isLockedOn, wasPlayingAnimation = nil, false, false
+    if not aimEnabled then
+        local hum = getHumanoid()
+        if hum and autoRotateDisabled then
+            hum.AutoRotate = true
+            autoRotateDisabled = false
+        end
+        currentTarget = nil
+        wasPlaying = false
         return
     end
 
-    if not isKiller() then
-        restoreAutoRotate()
-        currentTarget, isLockedOn, wasPlayingAnimation = nil, false, false
-        return
-    end
+    if not isKiller() then return end
 
-    local myHumanoid = getMyHumanoid()
-    if not myHumanoid then return end
-
-    local myRoot = myHumanoid.Parent:FindFirstChild("HumanoidRootPart")
-    if not myRoot then return end
+    local humanoid = getHumanoid()
+    local root = getRoot()
+    if not humanoid or not root then return end
 
     local isPlaying = isPlayingDangerousAnimation()
 
-    if isPlaying and not isLockedOn then
+    if isPlaying and not currentTarget then
         currentTarget = getClosestSurvivor()
-        if currentTarget then
-            isLockedOn = true
+    end
+
+    if (not isPlaying) and wasPlaying then
+        currentTarget = nil
+        if humanoid and autoRotateDisabled then
+            humanoid.AutoRotate = true
+            autoRotateDisabled = false
         end
     end
+    wasPlaying = isPlaying
 
-    if isLockedOn and currentTarget then
-        local tHum = currentTarget:FindFirstChildWhichIsA("Humanoid")
-        local tHrp = currentTarget:FindFirstChild("HumanoidRootPart")
-
-        if (not tHum) or (tHum.Health <= 0) or (not tHrp) then
-            currentTarget, isLockedOn = nil, false
-        end
-    end
-
-    if (not isPlaying) and wasPlayingAnimation then
-        currentTarget, isLockedOn = nil, false
-        restoreAutoRotate()
-    end
-
-    wasPlayingAnimation = isPlaying
-
-    if isPlaying and isLockedOn and currentTarget then
+    if currentTarget and isPlaying then
         local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+        local hum = currentTarget:FindFirstChildWhichIsA("Humanoid")
+
+        if not hrp or not hum or hum.Health <= 0 then
+            currentTarget = nil
+            return
+        end
+
+        if not autoRotateDisabled then
+            humanoid.AutoRotate = false
+            autoRotateDisabled = true
+        end
 
         local targetPos = hrp.Position
-
-        if not autoRotateDisabledByScript then
-            myHumanoid.AutoRotate = false
-            autoRotateDisabledByScript = true
-        end
 
         if predictMovement then
             local vel = hrp.Velocity
@@ -2040,24 +1993,53 @@ RunService.RenderStepped:Connect(function()
             end
         end
 
-        local lookAt = Vector3.new(targetPos.X, myRoot.Position.Y, targetPos.Z)
+        local lookAt = Vector3.new(targetPos.X, root.Position.Y, targetPos.Z)
 
         if aimMode == "One Player" then
-            myRoot.CFrame = myRoot.CFrame:Lerp(
-                CFrame.lookAt(myRoot.Position, lookAt),
+            root.CFrame = root.CFrame:Lerp(
+                CFrame.lookAt(root.Position, lookAt),
                 0.99
             )
 
         elseif aimMode == "Multi Players" then
-            local newTarget = getClosestSurvivor()
-            if newTarget then
-                currentTarget = newTarget
-            end
-
-            myRoot.CFrame = myRoot.CFrame:Lerp(
-                CFrame.lookAt(myRoot.Position, lookAt),
+            currentTarget = getClosestSurvivor()
+            root.CFrame = root.CFrame:Lerp(
+                CFrame.lookAt(root.Position, lookAt),
                 0.99
             )
         end
     end
 end)
+
+-- =========================
+-- Rayfield UI (Combat Tab)
+-- =========================
+Combat:CreateSection("1x1x1x1 Aim")
+
+Combat:CreateToggle({
+    Name = "Aim",
+    CurrentValue = false,
+    Flag = "1x1x1x1_AimToggle",
+    Callback = function(Value)
+        aimEnabled = Value
+    end,
+})
+
+Combat:CreateDropdown({
+    Name = "Mode",
+    Options = {"One Player", "Multi Players"},
+    CurrentOption = "One Player",
+    Flag = "1x1x1x1_AimMode",
+    Callback = function(Value)
+        aimMode = Value
+    end,
+})
+
+Combat:CreateToggle({
+    Name = "Predict Movement",
+    CurrentValue = false,
+    Flag = "1x1x1x1_PredictMove",
+    Callback = function(Value)
+        predictMovement = Value
+    end,
+})
