@@ -1573,3 +1573,146 @@ LocalPlayer.CharacterAdded:Connect(function()
     lastPunchTime = 0
 end)
 -- ========== KẾT THÚC PHẦN AUTO BLOCK ==========
+----------------------------------------------------
+-- ✅ AUTO PARRY SECTION
+----------------------------------------------------
+Combat:CreateSection("Auto Parry")
+
+-- SERVICES
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LP = Players.LocalPlayer
+
+-- VARIABLES (GIỮ NGUYÊN)
+local AUTO = false
+local RAGE_DISTANCE = 19
+local COOLDOWN = 5
+local SPAM_TIME = 3
+local cooldowns = {}
+
+local RemoteEvent = ReplicatedStorage.Modules.Network.RemoteEvent
+
+local BUF_404 = buffer.fromstring("\3\8\0\0\0" .. "404Error")
+local BUF_RAGE = buffer.fromstring("\3\10\0\0\0RagingPace")
+
+----------------------------------------------------
+-- ✅ UI (Rayfield)
+----------------------------------------------------
+Combat:CreateToggle({
+    Name = "Auto Parry",
+    CurrentValue = false,
+    Callback = function(v)
+        AUTO = v
+    end
+})
+
+Combat:CreateInput({
+    Name = "Rage",
+    CurrentValue = tostring(RAGE_DISTANCE),
+    PlaceholderText = "RAGE",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(txt)
+        local v = tonumber(txt)
+        if v then
+            RAGE_DISTANCE = math.clamp(v, 5, 50)
+        end
+    end
+})
+
+----------------------------------------------------
+-- LOGIC (KHÔNG ĐỔI)
+----------------------------------------------------
+local function fireSkill(buf)
+    RemoteEvent:FireServer("UseActorAbility", { buf })
+end
+
+local animsToDetect = {
+    ["87259391926321"] = true,
+    ["138040001965654"] = true,
+    ["136007065400978"] = true,
+    ["108911997126897"] = true,
+    ["129843313690921"] = true,
+    ["81905101227053"] = true,
+    ["113936304594883"] = true,
+    ["140703210927645"] = true,
+    ["86709774283672"] = true,
+    ["119850211147676"] = true,
+    ["108807732150251"] = true,
+    ["111270184603402"] = true,
+    ["86096387000557"] = true,
+    ["99422325754526"] = true,
+    ["82137285150006"] = true,
+    ["78440860685556"] = true,
+    ["138008678294576"] = true,
+    ["108137703081583"] = true,
+    ["111351142668768"] = true,
+    ["97020933136241"] = true,
+    ["80109359274646"] = true,
+    ["91876712939436"] = true,
+    ["80872238342472"] = true,
+    ["129228295705213"] = true,
+    ["118647044497447"] = true,
+    ["116618003477002"] = true,
+    ["122503338277352"] = true,
+    ["131696603025265"] = true,
+    ["119462383658044"] = true,
+    ["77448521277146"] = true,
+    ["108773914369470"] = true,
+    ["98031287364865"] = true,
+    ["121255898612475"] = true,
+    ["110400453990786"] = true,
+    ["105614318732282"] = true,
+}
+
+local function isAnimMatch(track)
+    local id = tostring(track.Animation.AnimationId):match("%d+")
+    return id and animsToDetect[id]
+end
+
+----------------------------------------------------
+-- MAIN LOOP
+----------------------------------------------------
+RunService.Heartbeat:Connect(function()
+    if not AUTO then return end
+
+    local myChar = LP.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+
+            local hrp = plr.Character.HumanoidRootPart
+            local dist = (hrp.Position - myHRP.Position).Magnitude
+
+            if dist <= RAGE_DISTANCE and (not cooldowns[plr] or tick() - cooldowns[plr] >= COOLDOWN) then
+
+                local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    for _, track in ipairs(hum:GetPlayingAnimationTracks()) do
+
+                        if isAnimMatch(track) then
+                            cooldowns[plr] = tick()
+
+                            task.spawn(function()
+                                fireSkill(BUF_RAGE)
+                                task.wait(0.15)
+
+                                local t = tick()
+                                while tick() - t < SPAM_TIME do
+                                    fireSkill(BUF_404)
+                                    task.wait(0.05)
+                                end
+                            end)
+
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
