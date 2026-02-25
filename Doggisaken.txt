@@ -1208,6 +1208,7 @@ if LP.Character then updateBuffer() end
 ----------------------------------------------------
 -- ✅ UI (COMBAT TAB)
 ----------------------------------------------------
+Combat:CreateSection("Auto Block")
 Combat:CreateToggle({
     Name = "Auto M1",
     CurrentValue = false,
@@ -1235,3 +1236,267 @@ Combat:CreateInput({
         end
     end
 })
+
+-- ===== Services =====
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+
+----------------------------------------------------
+-- VARIABLES GLOBAL CHO CÁC TÍNH NĂNG KHÁC (giữ nguyên)
+----------------------------------------------------
+local autoGenEnabled = false
+local autoGenCooldown = 4
+local infStaminaEnabled = false
+local visualStaminaEnabled = false
+
+-- ========== CÁC PHẦN HIỆN CÓ (GIỮ NGUYÊN) ==========
+-- (đã có từ file gốc: Generator, Stamina, Visual Stamina, Auto Generator, Text ESP, Pizza Aim, Auto Slash, Chance Aim, Dusekkar Aimbot, Auto M1)
+-- Vì lý do độ dài, tôi sẽ chỉ hiển thị phần thêm mới và giữ nguyên phần cũ.
+-- Trong file thực tế, bạn giữ nguyên toàn bộ nội dung cũ, và chèn phần dưới đây vào cuối tab Combat, trước hoặc sau các section khác.
+
+-- ========== PHẦN THÊM MỚI: AUTO BLOCK ==========
+Combat:CreateSection("Auto Block")
+
+-- State variables cho Auto Block
+local autoBlockEnabled = false
+local autoBlockMode = "Block"   -- "Block" hoặc "Clone"
+local facingCheckEnabled = true
+local autoPunchEnabled = false
+local rage = 20                   -- khoảng cách phát hiện (dùng chung)
+local facingDotThreshold = 0.2     -- ngưỡng facing check
+
+-- Cooldown
+local lastBlockTime = 0
+local lastPunchTime = 0
+local LOCAL_BLOCK_COOLDOWN = 0.7
+local LOCAL_PUNCH_COOLDOWN = 0.6
+
+-- Animation tracking
+local blockPrevPlaying = {}       -- animation block của kẻ địch frame trước
+local punchPrevPlaying = {}       -- animation punch của local frame trước
+
+-- Danh sách animation ID từ skid123
+local autoBlockTriggerAnims = {
+    "105458270463374", "126830014841198", "129260077168659", "114375669802778",
+    "80208162053146", "135853087227453", "88451353906104", "116618003477002",
+    "83829782357897", "118298475669935", "74707328554358", "109667959938617",
+    "120112897026015", "125403313786645", "118298475669935", "94958041603347",
+    "130958529065375", "106860049270347", "124705663396411", "70948173568515",
+    "126355327951215", "82113744478546", "133336594357903", "126681776859538",
+    "81639435858902", "82113744478546", "126727756047566", "110702884830060",
+    "101736016625776", "109845134167647", "121086746534252", "113440898787986",
+    "118901677478609", "86204001129974", "81255669374177", "83446441317389",
+    "129976080405072", "140125695162370", "77154853064447", "93316899246221",
+    "137314737492715", "138390711856189", "121043188582126", "106847695270773",
+    "91758760621955", "114356208094580", "126896426760253", "135884061951801",
+    "139321362207112", "137642639873297", "132221505301108", "94634594529334",
+    "100358581940485", "86185540502966", "106538427162796", "77375846492436",
+    "93366464803829", "91509234639766", "86510482379594", "133990700986998",
+    "84895799077246", "84413781229733", "128414736976503", "133363345661032",
+    "139309647473555", "122709416391891", "88451353906104", "91628732643385",
+    "124269076578545", "124269076578545", "90620531468240", "71834552297085",
+    "110877859670130", "12222208", "10548112", "127324570265084", "105937652127383",
+    "102923788301986", "11998777", "105458270463374", "88970503168421",
+    "81299297965542", "93069721274110", "97167027849946", "118919403162061",
+    "131219306779772", "106776364623742", "127846074966393", "123345437821399",
+    "18885909645", "121080480916189", "131543461321709", "84069821282466",
+    "114126519127454", "70371667919898", "137679730950847"
+}
+
+local punchAnimIds = {
+    "87259391926321", "138040001965654", "136007065400978", "108911997126897",
+    "129843313690921", "81905101227053", "113936304594883", "140703210927645",
+    "86709774283672", "119850211147676", "108807732150251", "111270184603402",
+    "86096387000557", "99422325754526", "136007065400978", "82137285150006",
+    "129843313690921", "78440860685556", "87259391926321"
+}
+
+-- Helper functions
+local function fireRemoteBlock()
+    ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Network"):WaitForChild("RemoteEvent"):FireServer(
+        "UseActorAbility",
+        { [1] = buffer.fromstring("\3\5\0\0\0Block") }
+    )
+end
+
+local function fireRemoteClone()
+    ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Network"):WaitForChild("RemoteEvent"):FireServer(
+        "UseActorAbility",
+        { [1] = buffer.fromstring("\3\5\0\0\0Clone") }
+    )
+end
+
+local function fireRemotePunch()
+    ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Network"):WaitForChild("RemoteEvent"):FireServer(
+        "UseActorAbility",
+        { [1] = buffer.fromstring("\3\5\0\0\0Punch") }
+    )
+end
+
+local function isFacing(localRoot, targetRoot)
+    if not facingCheckEnabled then return true end
+    if not localRoot or not targetRoot then return false end
+    local toTarget = (targetRoot.Position - localRoot.Position).Unit
+    local forward = localRoot.CFrame.LookVector
+    return toTarget:Dot(forward) > facingDotThreshold
+end
+
+local function getLocalRoot()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getOtherPlayers()
+    local others = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then table.insert(others, plr) end
+    end
+    return others
+end
+
+-- UI Controls
+Combat:CreateToggle({
+    Name = "Auto Block",
+    CurrentValue = false,
+    Callback = function(v) autoBlockEnabled = v end
+})
+
+Combat:CreateDropdown({
+    Name = "Mode",
+    Options = {"Block", "Clone"},
+    CurrentOption = "Block",
+    Callback = function(opt)
+        autoBlockMode = typeof(opt) == "table" and opt[1] or opt
+    end
+})
+
+Combat:CreateInput({
+    Name = "Rage",
+    PlaceholderText = "20",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(t)
+        local n = tonumber(t)
+        if n then rage = n end
+    end
+})
+
+Combat:CreateToggle({
+    Name = "Facing Check",
+    CurrentValue = true,
+    Callback = function(v) facingCheckEnabled = v end
+})
+
+Combat:CreateToggle({
+    Name = "Auto Punch",
+    CurrentValue = false,
+    Callback = function(v) autoPunchEnabled = v end
+})
+
+-- Main loop xử lý Auto Block và Auto Punch (chạy cùng RenderStepped)
+-- (Đoạn này nên đặt sau tất cả các UI controls, nhưng trước end của file)
+-- Lưu ý: file đã có nhiều connection RenderStepped, ta có thể gộp hoặc thêm một connection riêng.
+-- Để an toàn, ta tạo một connection riêng và đặt tên biến tránh trùng.
+local autoBlockConnection = RunService.RenderStepped:Connect(function()
+    local myRoot = getLocalRoot()
+    if not myRoot then return end
+    local now = tick()
+
+    -- AUTO BLOCK
+    if autoBlockEnabled then
+        local others = getOtherPlayers()
+        local currentBlockPlaying = {}
+
+        for _, plr in ipairs(others) do
+            local char = plr.Character
+            if char then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if hum and root then
+                    local dist = (root.Position - myRoot.Position).Magnitude
+                    if dist <= rage then
+                        local animator = hum:FindFirstChildOfClass("Animator")
+                        if animator then
+                            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                                local animId = tostring(track.Animation and track.Animation.AnimationId or ""):match("%d+")
+                                if animId and table.find(autoBlockTriggerAnims, animId) then
+                                    currentBlockPlaying[animId] = true
+                                    if not blockPrevPlaying[animId] and isFacing(myRoot, root) then
+                                        if autoBlockMode == "Block" and (now - lastBlockTime) > LOCAL_BLOCK_COOLDOWN then
+                                            fireRemoteBlock()
+                                            lastBlockTime = now
+                                        elseif autoBlockMode == "Clone" and (now - lastBlockTime) > LOCAL_BLOCK_COOLDOWN then
+                                            fireRemoteClone()
+                                            lastBlockTime = now
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        blockPrevPlaying = currentBlockPlaying
+    else
+        blockPrevPlaying = {}
+    end
+
+    -- AUTO PUNCH + AIM (smoothing 0.7)
+    if autoPunchEnabled then
+        local myHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if myHum then
+            local animator = myHum:FindFirstChildOfClass("Animator")
+            if animator then
+                local tracks = animator:GetPlayingAnimationTracks()
+                local currentPunchPlaying = {}
+                for _, track in ipairs(tracks) do
+                    local animId = tostring(track.Animation and track.Animation.AnimationId or ""):match("%d+")
+                    if animId and table.find(punchAnimIds, animId) then
+                        currentPunchPlaying[animId] = true
+                        if not punchPrevPlaying[animId] then
+                            if (now - lastPunchTime) > LOCAL_PUNCH_COOLDOWN then
+                                fireRemotePunch()
+                                lastPunchTime = now
+                            end
+                        end
+                        -- Aim smoothing 0.7
+                        local nearestDist = math.huge
+                        local targetRoot = nil
+                        for _, plr in ipairs(getOtherPlayers()) do
+                            local char = plr.Character
+                            if char then
+                                local root = char:FindFirstChild("HumanoidRootPart")
+                                if root then
+                                    local d = (root.Position - myRoot.Position).Magnitude
+                                    if d < nearestDist and d <= rage then
+                                        nearestDist = d
+                                        targetRoot = root
+                                    end
+                                end
+                            end
+                        end
+                        if targetRoot then
+                            local lookPos = Vector3.new(targetRoot.Position.X, myRoot.Position.Y, targetRoot.Position.Z)
+                            myRoot.CFrame = myRoot.CFrame:Lerp(CFrame.lookAt(myRoot.Position, lookPos), 0.7)
+                        end
+                    end
+                end
+                punchPrevPlaying = currentPunchPlaying
+            end
+        end
+    else
+        punchPrevPlaying = {}
+    end
+end)
+
+-- Dọn dẹp khi nhân vật hồi sinh
+LocalPlayer.CharacterAdded:Connect(function()
+    punchPrevPlaying = {}
+    blockPrevPlaying = {}
+    lastBlockTime = 0
+    lastPunchTime = 0
+end)
